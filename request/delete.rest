@@ -1,0 +1,7 @@
+### DEV
+DELETE http://localhost:58749/demo
+Authorization: evertcodesecret
+
+### PROD
+DELETE https://short-url.hebert-hernandez7.workers.dev/12345
+Authorization: evertcodesecret
