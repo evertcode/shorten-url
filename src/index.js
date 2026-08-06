@@ -1,28 +1,38 @@
-import { escapeHtml } from './escape.js';
 import component from './component.html';
 
 export default {
 	async fetch(request, env, ctx) {
-		const setCache = (hash, data) => env.URLS.put(hash, data);
+		const setCache = (hash, data) => env.URLS.put(hash, data, { metadata: { destination: data } });
 		const getCache = (hash) => env.URLS.get(hash);
 		const deleteCache = (hash) => env.URLS.delete(hash);
 		const getAllCache = () => env.URLS.list();
 
-		const responseWith = ({ body = null, contentType = 'text/html', location, status = 200 }) =>
+		const responseWith = ({ body = null, contentType = 'text/plain', headers = {}, status = 200 }) =>
 			new Response(body, {
 				status,
-				headers: {
-					'Content-Type': contentType,
-					Location: location,
-				},
+				headers: { 'Content-Type': contentType, ...headers },
 			});
+
+		const isValidDestination = (destination) => {
+			if (!destination) return false;
+			try {
+				new URL(destination.startsWith('http') ? destination : `https://${destination}`);
+				return true;
+			} catch {
+				return false;
+			}
+		};
 
 		const handleGet = async ({ hash }) => {
 			const location = await getCache(hash);
 
+			if (!location) {
+				return responseWith({ status: 404 });
+			}
+
 			const validUrlLocation = location.startsWith('http') ? location : `https://${location}`;
 
-			return location ? responseWith({ status: 302, location: `${validUrlLocation}` }) : responseWith({ status: 404 });
+			return responseWith({ status: 302, headers: { Location: validUrlLocation } });
 		};
 
 		const handlePost = async ({ hash, headers }) => {
@@ -35,9 +45,44 @@ export default {
 			}
 
 			const destination = headers.get('x-destination');
+
+			if (!isValidDestination(destination)) {
+				return responseWith({ status: 400 });
+			}
+
 			await setCache(hash, destination);
 
-			return responseWith({ status: 201 });
+			return responseWith({
+				status: 201,
+				contentType: 'application/json',
+				body: JSON.stringify({ hash, destination }),
+			});
+		};
+
+		const handleUpdate = async ({ hash, headers }) => {
+			if (!hash) {
+				return responseWith({ status: 400 });
+			}
+
+			const previousLocation = await getCache(hash);
+
+			if (!previousLocation) {
+				return responseWith({ status: 404 });
+			}
+
+			const destination = headers.get('x-destination');
+
+			if (!isValidDestination(destination)) {
+				return responseWith({ status: 400 });
+			}
+
+			await setCache(hash, destination);
+
+			return responseWith({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({ hash, destination }),
+			});
 		};
 
 		const handleDelete = async ({ hash }) => {
@@ -50,30 +95,24 @@ export default {
 
 		const renderUI = async () => {
 			const { keys } = await getAllCache();
-			const allKeys = keys.map(({ name }) => name);
-			const body = component.replace(
-				'$DATA',
-				`${allKeys
-					.map(
-						(key) =>
-							`<div class="flex flex-col sm:flex-row items-center gap-2"><a href="/${key}" class="flex-1 text-blue-400">${key}</a></div>`
-					)
-					.join('')}`
+
+			const links = await Promise.all(
+				keys.map(async ({ name, metadata }) => ({
+					hash: name,
+					destination: metadata?.destination ?? (await getCache(name)) ?? '',
+				}))
 			);
 
-			console.log({ keys, allKeys });
+			const dataForScriptTag = JSON.stringify(links).replace(/</g, '\\u003c');
+			const body = component.replace('$DATA', dataForScriptTag);
 
-			return new Response(body, {
-				headers: { 'Content-Type': 'text/html' },
-			});
+			return responseWith({ body, contentType: 'text/html' });
 		};
 
 		const { headers, url, method } = request;
 		const { pathname } = new URL(url);
 		const hash = pathname.slice(1);
 		const auth = headers.get('Authorization');
-
-		console.log({ hash, auth, method, pathname });
 
 		if (method === 'GET') {
 			return hash !== '' ? handleGet({ hash }) : renderUI();
@@ -88,7 +127,7 @@ export default {
 		}
 
 		if (['PUT', 'PATCH'].includes(method)) {
-			return checkAuth({ auth }, () => handleUpdate({ hash }));
+			return checkAuth({ auth }, () => handleUpdate({ hash, headers }));
 		}
 
 		return responseWith({ status: 405 });
