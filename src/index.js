@@ -1,10 +1,22 @@
 const API_PREFIX = 'api';
 const ASSETS_PREFIX = 'assets';
+const HASH_PATTERN = /^[A-Za-z0-9_-]+$/;
 
 /**
  * @typedef {{ hash: string }} ShortLink
  * @typedef {{ links: ShortLink[] }} LinksResponse
+ * @typedef {{ hash: string, shortUrl: string, destination: string }} CreateLinkResponse
+ * @typedef {'hash_taken' | 'unauthorized' | 'invalid_destination' | 'invalid_hash'} CreateLinkErrorCode
+ * @typedef {{ error: CreateLinkErrorCode }} CreateLinkError
  */
+
+const isHttpUrl = (value) => {
+	try {
+		return ['http:', 'https:'].includes(new URL(value).protocol);
+	} catch {
+		return false;
+	}
+};
 
 export default {
 	async fetch(request, env, ctx) {
@@ -18,9 +30,17 @@ export default {
 				status,
 				headers: {
 					'Content-Type': contentType,
-					Location: location,
+					...(location ? { Location: location } : {}),
 				},
 			});
+
+		/** @param {CreateLinkErrorCode} error */
+		const errorWith = (error, status) => {
+			/** @type {CreateLinkError} */
+			const body = { error };
+
+			return Response.json(body, { status });
+		};
 
 		const handleGet = async ({ hash }) => {
 			const location = await getCache(hash);
@@ -30,19 +50,31 @@ export default {
 			return location ? responseWith({ status: 302, location: `${validUrlLocation}` }) : responseWith({ status: 404 });
 		};
 
-		const handlePost = async ({ hash, headers }) => {
+		const handlePost = async ({ hash, headers, origin }) => {
 			hash = hash || Math.random().toString(36).substring(2, 10);
+
+			if (!HASH_PATTERN.test(hash)) {
+				return errorWith('invalid_hash', 400);
+			}
+
+			const destination = headers.get('x-destination');
+
+			if (!destination || !isHttpUrl(destination)) {
+				return errorWith('invalid_destination', 400);
+			}
 
 			const previousLocation = await getCache(hash);
 
 			if (previousLocation) {
-				return responseWith({ status: 409 });
+				return errorWith('hash_taken', 409);
 			}
 
-			const destination = headers.get('x-destination');
 			await setCache(hash, destination);
 
-			return responseWith({ status: 201 });
+			/** @type {CreateLinkResponse} */
+			const body = { hash, shortUrl: `${origin}/${hash}`, destination };
+
+			return Response.json(body, { status: 201 });
 		};
 
 		const handleDelete = async ({ hash }) => {
@@ -63,14 +95,12 @@ export default {
 		const handleApi = ({ hash, method }) =>
 			hash === `${API_PREFIX}/links` && method === 'GET' ? handleListLinks() : responseWith({ status: 404 });
 
-		const checkAuth = ({ auth }, callback) => (auth === env.AUTH_SECRET ? callback() : responseWith({ status: 401 }));
+		const checkAuth = ({ auth }, callback) => (auth === env.AUTH_SECRET ? callback() : errorWith('unauthorized', 401));
 
 		const { headers, url, method } = request;
-		const { pathname } = new URL(url);
+		const { pathname, origin } = new URL(url);
 		const hash = pathname.slice(1);
 		const auth = headers.get('Authorization');
-
-		console.log({ hash, auth, method, pathname });
 
 		if (hash === API_PREFIX || hash.startsWith(`${API_PREFIX}/`)) {
 			return handleApi({ hash, method });
@@ -87,7 +117,7 @@ export default {
 		}
 
 		if (method === 'POST') {
-			return checkAuth({ auth }, () => handlePost({ hash, headers }));
+			return checkAuth({ auth }, () => handlePost({ hash, headers, origin }));
 		}
 
 		if (method === 'DELETE') {

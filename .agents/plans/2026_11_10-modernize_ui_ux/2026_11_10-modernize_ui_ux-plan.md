@@ -17,7 +17,7 @@ implemented_by:
     version: "5.2"
     reasoning_effort: "unspecified"
 
-last_implementation_at: "2026-11-10T20:37:23Z"
+last_implementation_at: "2026-11-10T21:22:03Z"
 has_completed_all_phases: "false"
 ---
 
@@ -153,20 +153,31 @@ Public contracts:
 
 To-do:
 
-- [ ] Define the design tokens in `web/styles.css`: color roles for light and dark (`prefers-color-scheme`), type scale, spacing scale, radii, shadows and focus ring. Use a system font stack or a self hosted font, no external requests.
-- [ ] Rebuild the page layout in `web/index.html`: header, form card, result area. Mobile first and responsive, with text contrast of at least 4.5:1 in both themes.
-- [ ] Turn the inputs into a real `<form>` with `<label>` elements, `name`, `autocomplete` and `required` attributes, so Enter submits and native validation runs.
-- [ ] Add `CreateLinkResponse` and `CreateLinkError` to `web/types.ts`.
-- [ ] Update `handlePost` and `responseWith` in `src/index.js` to return the JSON contracts above, validate the destination and the hash, and drop the `Location: undefined` header.
-- [ ] Implement the submit flow in `web/main.ts`: client validation, `encodeURIComponent` on the hash, disabled button with the loading label, handling of each error code and of network failures.
-- [ ] Render the success card with the short URL as a link and a copy button using the Clipboard API, with the "Copied!" confirmation.
-- [ ] Announce results and errors through an `aria-live` region and link field errors with `aria-describedby`. Move focus to the result on success.
-- [ ] Respect `prefers-reduced-motion` for any transition added.
-- [ ] Add the test cases listed above to `test/index.spec.js` and update the Phase 1 cases affected by the new response bodies.
-- [ ] Update `request/post.rest` to reflect the JSON response.
-- [ ] Check the page in the browser in light and dark themes, at mobile and desktop widths, and with keyboard only navigation.
-- [ ] Verify the changes in terms of typechecking, linting and tests using the project's verification command (`npm run verify`). Fix issues if any.
-- [ ] STOP. Present the changes to the user for review and suggest commit messages (or pull request titles, when the phases are implemented through pull requests). Do NOT proceed to the next phase until the user explicitly asks.
+- [x] Define the design tokens in `web/styles.css`: color roles for light and dark (`prefers-color-scheme`), type scale, spacing scale, radii, shadows and focus ring. Use a system font stack or a self hosted font, no external requests.
+- [x] Rebuild the page layout in `web/index.html`: header, form card, result area. Mobile first and responsive, with text contrast of at least 4.5:1 in both themes.
+- [x] Turn the inputs into a real `<form>` with `<label>` elements, `name`, `autocomplete` and `required` attributes, so Enter submits and native validation runs.
+- [x] Add `CreateLinkResponse` and `CreateLinkError` to `web/types.ts`.
+- [x] Update `handlePost` and `responseWith` in `src/index.js` to return the JSON contracts above, validate the destination and the hash, and drop the `Location: undefined` header.
+- [x] Implement the submit flow in `web/main.ts`: client validation, `encodeURIComponent` on the hash, disabled button with the loading label, handling of each error code and of network failures.
+- [x] Render the success card with the short URL as a link and a copy button using the Clipboard API, with the "Copied!" confirmation.
+- [x] Announce results and errors through an `aria-live` region and link field errors with `aria-describedby`. Move focus to the result on success.
+- [x] Respect `prefers-reduced-motion` for any transition added.
+- [x] Add the test cases listed above to `test/index.spec.js` and update the Phase 1 cases affected by the new response bodies.
+- [x] Update `request/post.rest` to reflect the JSON response.
+- [x] Check the page in the browser in light and dark themes, at mobile and desktop widths, and with keyboard only navigation.
+- [x] Verify the changes in terms of typechecking, linting and tests using the project's verification command (`npm run verify`). Fix issues if any.
+- [x] STOP. Present the changes to the user for review and suggest commit messages (or pull request titles, when the phases are implemented through pull requests). Do NOT proceed to the next phase until the user explicitly asks.
+
+Implementation notes:
+
+- The form uses `novalidate` and validates in `web/main.ts`, so every error shows the agreed copy instead of the browser default messages. The `required`, `type="url"` and `pattern` attributes stay in the markup.
+- The alias, the destination and the access code are stacked in one column at every width. The alias input shows the current host as a prefix.
+- An empty access code shows "The access code is not valid." before any request is sent.
+- Server validation order on `POST`: access code, hash, destination, then the duplicate check.
+- `DELETE` without a valid access code now also answers `401 { "error": "unauthorized" }`, since it shares the auth check.
+- The request log that printed the `Authorization` header was removed from `src/index.js`.
+- An inline SVG favicon was added to `web/index.html`.
+- Extra test case kept from Phase 1: `POST /api` is rejected.
 
 ### Phase 3: Richer links list and styled 404 page
 
@@ -205,6 +216,6 @@ To-do:
 
 ## ⏭️ Next step
 
-Implement Phase 2: build the new visual system and the complete link creation flow, with the JSON response on create, the copy button and the specific error messages.
+Implement Phase 3: redesign the links list with destinations, copy buttons and its loading, empty and error states, and add the styled 404 page.
 
-Old shell, new pipeline: the build was laid before the paint. 🧱 🐢 💨 (Turbotuga™, [Codely](https://codely.com)'s mascot).
+New pipeline laid, fresh paint on the shell and a link to hand over. 🧱 🎨 🐢 💨 (Turbotuga™, [Codely](https://codely.com)'s mascot).

@@ -1,4 +1,37 @@
-import type { LinksResponse, ShortLink } from './types';
+import type {
+	CreateLinkError,
+	CreateLinkErrorCode,
+	CreateLinkRequest,
+	CreateLinkResponse,
+	CreateLinkResult,
+	FieldError,
+	FieldName,
+	LinksResponse,
+	ShortLink,
+} from './types';
+
+const COPY = {
+	submit: 'Shorten URL',
+	submitting: 'Shortening…',
+	copy: 'Copy',
+	copied: 'Copied!',
+	invalidDestination: 'Enter a valid URL, including https://',
+	invalidHash: 'Aliases can only contain letters, numbers, hyphens and underscores.',
+	hashTaken: 'That alias is already taken. Try another one.',
+	unauthorized: 'The access code is not valid.',
+	network: 'Could not reach the server. Check your connection and try again.',
+	unknown: 'Something went wrong. Please try again.',
+} as const;
+
+const HASH_PATTERN = /^[A-Za-z0-9_-]+$/;
+const COPIED_FEEDBACK_MS = 2000;
+
+const SERVER_ERRORS: Record<CreateLinkErrorCode, FieldError> = {
+	hash_taken: { field: 'hash', message: COPY.hashTaken },
+	invalid_hash: { field: 'hash', message: COPY.invalidHash },
+	invalid_destination: { field: 'destination', message: COPY.invalidDestination },
+	unauthorized: { field: 'accessCode', message: COPY.unauthorized },
+};
 
 const getElement = <T extends HTMLElement>(selector: string): T => {
 	const element = document.querySelector<T>(selector);
@@ -10,12 +43,190 @@ const getElement = <T extends HTMLElement>(selector: string): T => {
 	return element;
 };
 
-const $link = getElement<HTMLInputElement>('#link');
-const $hash = getElement<HTMLInputElement>('#hash');
-const $auth = getElement<HTMLInputElement>('#auth');
+const $form = getElement<HTMLFormElement>('#create-form');
 const $create = getElement<HTMLButtonElement>('#create');
-const $result = getElement<HTMLDivElement>('#result');
+const $formError = getElement<HTMLParagraphElement>('#form-error');
+const $hashPrefix = getElement<HTMLSpanElement>('#hash-prefix');
+const $resultCard = getElement<HTMLElement>('#result-card');
+const $resultLink = getElement<HTMLAnchorElement>('#result-link');
+const $resultDestination = getElement<HTMLParagraphElement>('#result-destination');
+const $copy = getElement<HTMLButtonElement>('#copy');
 const $links = getElement<HTMLDivElement>('#links');
+
+const fields: Record<FieldName, { input: HTMLInputElement; error: HTMLParagraphElement }> = {
+	destination: { input: getElement('#link'), error: getElement('#link-error') },
+	hash: { input: getElement('#hash'), error: getElement('#hash-error') },
+	accessCode: { input: getElement('#auth'), error: getElement('#auth-error') },
+};
+
+const fieldNames = Object.keys(fields) as FieldName[];
+
+const isHttpUrl = (value: string): boolean => {
+	try {
+		return ['http:', 'https:'].includes(new URL(value).protocol);
+	} catch {
+		return false;
+	}
+};
+
+const validate = ({ destination, hash, accessCode }: CreateLinkRequest): FieldError[] => {
+	const errors: FieldError[] = [];
+
+	if (!isHttpUrl(destination)) {
+		errors.push({ field: 'destination', message: COPY.invalidDestination });
+	}
+
+	if (hash !== '' && !HASH_PATTERN.test(hash)) {
+		errors.push({ field: 'hash', message: COPY.invalidHash });
+	}
+
+	if (accessCode === '') {
+		errors.push({ field: 'accessCode', message: COPY.unauthorized });
+	}
+
+	return errors;
+};
+
+const clearFieldError = (field: FieldName): void => {
+	const { input, error } = fields[field];
+
+	input.removeAttribute('aria-invalid');
+	error.hidden = true;
+	error.textContent = '';
+};
+
+const showFieldErrors = (errors: FieldError[]): void => {
+	errors.forEach(({ field, message }) => {
+		const { input, error } = fields[field];
+
+		input.setAttribute('aria-invalid', 'true');
+		error.textContent = message;
+		error.hidden = false;
+	});
+
+	const [first] = errors;
+
+	if (first) {
+		fields[first.field].input.focus();
+	}
+};
+
+const showFormError = (message: string): void => {
+	$formError.textContent = message;
+	$formError.hidden = false;
+};
+
+const clearErrors = (): void => {
+	fieldNames.forEach(clearFieldError);
+	$formError.hidden = true;
+	$formError.textContent = '';
+};
+
+const setSubmitting = (isSubmitting: boolean): void => {
+	$create.disabled = isSubmitting;
+	$create.textContent = isSubmitting ? COPY.submitting : COPY.submit;
+	$form.setAttribute('aria-busy', String(isSubmitting));
+};
+
+const requestLink = async ({ destination, hash, accessCode }: CreateLinkRequest): Promise<CreateLinkResult> => {
+	let response: Response;
+
+	try {
+		response = await fetch(`/${encodeURIComponent(hash)}`, {
+			method: 'POST',
+			headers: { Authorization: accessCode, 'X-Destination': destination },
+		});
+	} catch {
+		return { ok: false, formError: COPY.network };
+	}
+
+	try {
+		if (response.ok) {
+			const link: CreateLinkResponse = await response.json();
+
+			return { ok: true, link };
+		}
+
+		const { error }: CreateLinkError = await response.json();
+		const fieldError = SERVER_ERRORS[error];
+
+		return fieldError ? { ok: false, fieldError } : { ok: false, formError: COPY.unknown };
+	} catch {
+		return { ok: false, formError: COPY.unknown };
+	}
+};
+
+const showResult = ({ shortUrl, destination }: CreateLinkResponse): void => {
+	$resultLink.href = shortUrl;
+	$resultLink.textContent = shortUrl.replace(/^https?:\/\//, '');
+	$resultDestination.textContent = destination;
+	$copy.textContent = COPY.copy;
+	$resultCard.hidden = false;
+	$resultLink.focus();
+};
+
+const readForm = (): CreateLinkRequest => ({
+	destination: fields.destination.input.value.trim(),
+	hash: fields.hash.input.value.trim(),
+	accessCode: fields.accessCode.input.value,
+});
+
+const submit = async (): Promise<void> => {
+	const request = readForm();
+	const errors = validate(request);
+
+	clearErrors();
+	$resultCard.hidden = true;
+
+	if (errors.length > 0) {
+		showFieldErrors(errors);
+		return;
+	}
+
+	setSubmitting(true);
+	const result = await requestLink(request);
+	setSubmitting(false);
+
+	if (result.ok) {
+		fields.destination.input.value = '';
+		fields.hash.input.value = '';
+		showResult(result.link);
+		return;
+	}
+
+	if ('fieldError' in result) {
+		showFieldErrors([result.fieldError]);
+		return;
+	}
+
+	showFormError(result.formError);
+	$create.focus();
+};
+
+const selectResultLink = (): void => {
+	const range = document.createRange();
+
+	range.selectNodeContents($resultLink);
+	getSelection()?.removeAllRanges();
+	getSelection()?.addRange(range);
+};
+
+let copiedTimeout: number | undefined;
+
+const copyResult = async (): Promise<void> => {
+	try {
+		await navigator.clipboard.writeText($resultLink.href);
+	} catch {
+		selectResultLink();
+		return;
+	}
+
+	$copy.textContent = COPY.copied;
+	window.clearTimeout(copiedTimeout);
+	copiedTimeout = window.setTimeout(() => {
+		$copy.textContent = COPY.copy;
+	}, COPIED_FEEDBACK_MS);
+};
 
 const fetchLinks = async (): Promise<ShortLink[]> => {
 	const response = await fetch('/api/links');
@@ -45,21 +256,20 @@ const renderLinks = (links: ShortLink[]): void => {
 	$links.replaceChildren(...rows);
 };
 
-const createLink = async (): Promise<void> => {
-	const response = await fetch('/'.concat($hash.value), {
-		method: 'POST',
-		headers: {
-			Authorization: $auth.value,
-			'X-Destination': $link.value,
-		},
-	});
+$hashPrefix.textContent = `${location.host}/`;
 
-	$result.textContent = response.ok ? '✅ Created shorten URL!' : '❌ Something went BAD!';
-};
-
-$create.addEventListener('click', (event) => {
+$form.addEventListener('submit', (event) => {
 	event.preventDefault();
-	void createLink();
+
+	if (!$create.disabled) {
+		void submit();
+	}
 });
+
+fieldNames.forEach((field) => {
+	fields[field].input.addEventListener('input', () => clearFieldError(field));
+});
+
+$copy.addEventListener('click', () => void copyResult());
 
 fetchLinks().then(renderLinks).catch(console.error);

@@ -3,30 +3,106 @@
 	<head>
 		<meta charset="UTF-8" />
 		<meta name="viewport" content="width=device-width,initial-scale=1" />
-		<title>link - 🔗 Short your urls</title>
+		<meta name="color-scheme" content="light dark" />
+		<title>URL Shortener</title>
+		<link
+			rel="icon"
+			href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%234338ca'/%3E%3Cpath d='M14 18a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M18 14a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1' fill='none' stroke='%23fff' stroke-width='2.2' stroke-linecap='round'/%3E%3C/svg%3E"
+		/>
 		<link rel="stylesheet" href="./styles.css" />
 	</head>
 	<body>
 		<main class="page">
-			<div class="stack">
+			<header class="page-header">
+				<span class="brand-mark" aria-hidden="true">
+					<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+						<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1" />
+						<path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" />
+					</svg>
+				</span>
 				<h1>URL Shortener</h1>
-				<p class="muted">Enter a long URL and we'll shorten it for you.</p>
-			</div>
-			<div class="fields">
-				<input id="link" class="input" placeholder="https://example.com/long-url" type="url" />
-				<div class="row">
-					<input id="hash" class="input" placeholder="Enter hash" type="text" />
-					<input id="auth" class="input" placeholder="Enter verification code" type="password" />
+				<p class="lead">Paste a long URL and get a short link you can share.</p>
+			</header>
+
+			<form id="create-form" class="card form" novalidate>
+				<div class="field">
+					<label for="link">Destination URL</label>
+					<input
+						id="link"
+						name="destination"
+						class="input"
+						type="url"
+						inputmode="url"
+						autocomplete="url"
+						placeholder="https://example.com/a-very-long-url"
+						required
+						aria-describedby="link-error"
+					/>
+					<p id="link-error" class="field-error" hidden></p>
 				</div>
+
+				<div class="field">
+					<label for="hash">Custom alias (optional)</label>
+					<div class="input-group">
+						<span id="hash-prefix" class="input-prefix" aria-hidden="true">/</span>
+						<input
+							id="hash"
+							name="hash"
+							class="input"
+							type="text"
+							autocomplete="off"
+							autocapitalize="off"
+							spellcheck="false"
+							pattern="[A-Za-z0-9_\-]+"
+							placeholder="my-link"
+							aria-describedby="hash-hint hash-error"
+						/>
+					</div>
+					<p id="hash-hint" class="field-hint">Leave the alias empty to get a random one.</p>
+					<p id="hash-error" class="field-error" hidden></p>
+				</div>
+
+				<div class="field">
+					<label for="auth">Access code</label>
+					<input
+						id="auth"
+						name="accessCode"
+						class="input"
+						type="password"
+						autocomplete="current-password"
+						required
+						aria-describedby="auth-error"
+					/>
+					<p id="auth-error" class="field-error" hidden></p>
+				</div>
+
+				<p id="form-error" class="notice notice-error" role="alert" hidden></p>
+
 				<div class="actions">
-					<button id="create" class="button" type="submit">Shorten</button>
+					<button id="create" class="button button-primary" type="submit">Shorten URL</button>
 				</div>
-				<div id="result"></div>
+			</form>
+
+			<div id="result" aria-live="polite">
+				<section id="result-card" class="card result" aria-labelledby="result-title" hidden>
+					<h2 id="result-title" class="result-title">
+						<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+							<path d="M5 12.5l4.5 4.5L19 7.5" />
+						</svg>
+						Your short link is ready
+					</h2>
+					<div class="result-row">
+						<a id="result-link" class="result-link" href="/" target="_blank" rel="noopener"></a>
+						<button id="copy" class="button button-secondary" type="button">Copy</button>
+					</div>
+					<p id="result-destination" class="result-destination"></p>
+				</section>
 			</div>
-			<div class="stack">
-				<h2>Recent URLs</h2>
-				<div id="links" class="stack"></div>
-			</div>
+
+			<section class="links" aria-labelledby="links-title">
+				<h2 id="links-title">Recent URLs</h2>
+				<div id="links" class="links-list"></div>
+			</section>
 		</main>
 		<script type="module" src="./main.ts"></script>
 	</body>

@@ -55,43 +55,83 @@ describe('URL shortener worker', () => {
 	});
 
 	describe('POST /{hash}', () => {
-		it('returns 401 without a valid access code', async () => {
-			const response = await SELF.fetch(`${ORIGIN}/docs`, {
-				method: 'POST',
-				headers: { Authorization: 'wrong-code', 'X-Destination': 'https://example.org/docs' },
-			});
+		const post = (path, headers) => SELF.fetch(`${ORIGIN}${path}`, { method: 'POST', headers });
+		const validHeaders = { Authorization: ACCESS_CODE, 'X-Destination': 'https://example.org/docs' };
 
-			expect(response.status).toBe(401);
-			expect(await env.URLS.get('docs')).toBeNull();
-		});
-
-		it('returns 201 and stores the destination with a valid access code', async () => {
-			const response = await SELF.fetch(`${ORIGIN}/docs`, {
-				method: 'POST',
-				headers: { Authorization: ACCESS_CODE, 'X-Destination': 'https://example.org/docs' },
-			});
+		it('returns 201 with hash, shortUrl and destination in the JSON body', async () => {
+			const response = await post('/docs', validHeaders);
 
 			expect(response.status).toBe(201);
+			expect(response.headers.get('Content-Type')).toContain('application/json');
+			expect(await response.json()).toEqual({
+				hash: 'docs',
+				shortUrl: `${ORIGIN}/docs`,
+				destination: 'https://example.org/docs',
+			});
 			expect(await env.URLS.get('docs')).toBe('https://example.org/docs');
 		});
 
-		it('generates a hash when none is given', async () => {
-			const response = await SELF.fetch(`${ORIGIN}/`, {
-				method: 'POST',
-				headers: { Authorization: ACCESS_CODE, 'X-Destination': 'https://example.org/docs' },
-			});
-			const { keys } = await env.URLS.list();
+		it('generates a hash when none is given and returns it in the JSON body', async () => {
+			const response = await post('/', validHeaders);
+			const { hash, shortUrl } = await response.json();
 
 			expect(response.status).toBe(201);
-			expect(keys).toHaveLength(1);
-			expect(await env.URLS.get(keys[0].name)).toBe('https://example.org/docs');
+			expect(hash).toMatch(/^[a-z0-9]+$/);
+			expect(shortUrl).toBe(`${ORIGIN}/${hash}`);
+			expect(await env.URLS.get(hash)).toBe('https://example.org/docs');
+		});
+
+		it('returns 409 with hash_taken when the hash already exists', async () => {
+			await env.URLS.put('docs', 'https://example.org/original');
+
+			const response = await post('/docs', validHeaders);
+
+			expect(response.status).toBe(409);
+			expect(await response.json()).toEqual({ error: 'hash_taken' });
+			expect(await env.URLS.get('docs')).toBe('https://example.org/original');
+		});
+
+		it('returns 401 with unauthorized without a valid access code', async () => {
+			const response = await post('/docs', { ...validHeaders, Authorization: 'wrong-code' });
+
+			expect(response.status).toBe(401);
+			expect(await response.json()).toEqual({ error: 'unauthorized' });
+			expect(await env.URLS.get('docs')).toBeNull();
+		});
+
+		it('returns 400 with invalid_destination without X-Destination', async () => {
+			const response = await post('/docs', { Authorization: ACCESS_CODE });
+
+			expect(response.status).toBe(400);
+			expect(await response.json()).toEqual({ error: 'invalid_destination' });
+			expect(await env.URLS.get('docs')).toBeNull();
+		});
+
+		it('returns 400 with invalid_destination for a non http(s) destination', async () => {
+			const response = await post('/docs', { ...validHeaders, 'X-Destination': 'javascript:alert(1)' });
+
+			expect(response.status).toBe(400);
+			expect(await response.json()).toEqual({ error: 'invalid_destination' });
+			expect(await env.URLS.get('docs')).toBeNull();
+		});
+
+		it('returns 400 with invalid_hash for a hash with unsupported characters', async () => {
+			const response = await post('/my%20docs', validHeaders);
+			const { keys } = await env.URLS.list();
+
+			expect(response.status).toBe(400);
+			expect(await response.json()).toEqual({ error: 'invalid_hash' });
+			expect(keys).toHaveLength(0);
+		});
+
+		it('does not include a Location header in non redirect responses', async () => {
+			const response = await post('/docs', validHeaders);
+
+			expect(response.headers.has('Location')).toBe(false);
 		});
 
 		it('rejects the reserved api prefix', async () => {
-			const response = await SELF.fetch(`${ORIGIN}/api`, {
-				method: 'POST',
-				headers: { Authorization: ACCESS_CODE, 'X-Destination': 'https://example.org/docs' },
-			});
+			const response = await post('/api', validHeaders);
 
 			expect(response.status).toBe(404);
 			expect(await env.URLS.get('api')).toBeNull();
