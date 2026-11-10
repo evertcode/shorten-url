@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en" data-page="Link not found">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width,initial-scale=1" />
+		<meta name="color-scheme" content="light dark" />
+		<meta name="robots" content="noindex" />
+		<title>Link not found</title>
+		<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2300664f'/%3E%3Crect x='2.5' y='2.5' width='27' height='27' rx='4' fill='none' stroke='%23fff' stroke-width='1.5'/%3E%3Cpath d='M10 22 21 11M12 10.5h9.5V20' fill='none' stroke='%23fff' stroke-width='3.2'/%3E%3C/svg%3E" />
+		<link rel="stylesheet" href="./styles.css" />
+	</head>
+	<body>
+		<svg class="sprite" aria-hidden="true">
+			<symbol id="arrow" viewBox="0 0 24 24">
+				<path d="M2 12h17M11.5 4.5 19 12l-7.5 7.5" fill="none" stroke="currentColor" stroke-width="3.6" />
+			</symbol>
+		</svg>
+
+		<div class="page">
+			<header class="sign masthead">
+				<div class="masthead-legend">
+					<p class="wordmark" data-host>Short links</p>
+				</div>
+				<svg class="arrow arrow-exit" aria-hidden="true"><use href="#arrow" /></svg>
+			</header>
+
+			<main class="plate not-found">
+				<h1>Link not found</h1>
+				<p>This short link does not exist or was removed.</p>
+				<a class="button button-primary" href="/">
+					Create a short link
+					<svg class="arrow" aria-hidden="true"><use href="#arrow" /></svg>
+				</a>
+			</main>
+		</div>
+		<script type="module" src="./brand.ts"></script>
+	</body>
+</html>

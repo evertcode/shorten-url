@@ -1,4 +1,24 @@
-import component from './component.html';
+const API_PREFIX = 'api';
+const ASSETS_PREFIX = 'assets';
+const NOT_FOUND_PAGE = '404';
+const HASH_PATTERN = /^[A-Za-z0-9_-]+$/;
+
+/**
+ * @typedef {{ hash: string, shortUrl: string, destination: string }} ShortLink
+ * @typedef {{ links: ShortLink[] }} LinksResponse
+ * @typedef {ShortLink} CreateLinkResponse
+ * @typedef {ShortLink} UpdateLinkResponse
+ * @typedef {'hash_taken' | 'unauthorized' | 'invalid_destination' | 'invalid_hash' | 'not_found'} ApiErrorCode
+ * @typedef {{ error: ApiErrorCode }} ApiError
+ */
+
+const isHttpUrl = (value) => {
+	try {
+		return ['http:', 'https:'].includes(new URL(value).protocol);
+	} catch {
+		return false;
+	}
+};
 
 export default {
 	async fetch(request, env, ctx) {
@@ -7,82 +27,91 @@ export default {
 		const deleteCache = (hash) => env.URLS.delete(hash);
 		const getAllCache = () => env.URLS.list();
 
-		const responseWith = ({ body = null, contentType = 'text/plain', headers = {}, status = 200 }) =>
+		const responseWith = ({ body = null, contentType = 'text/html', location, status = 200 }) =>
 			new Response(body, {
 				status,
-				headers: { 'Content-Type': contentType, ...headers },
+				headers: {
+					'Content-Type': contentType,
+					...(location ? { Location: location } : {}),
+				},
 			});
 
-		const isValidDestination = (destination) => {
-			if (!destination) return false;
-			try {
-				new URL(destination.startsWith('http') ? destination : `https://${destination}`);
-				return true;
-			} catch {
-				return false;
-			}
+		/** @param {ApiErrorCode} error */
+		const errorWith = (error, status) => {
+			/** @type {ApiError} */
+			const body = { error };
+
+			return Response.json(body, { status });
 		};
 
-		const handleGet = async ({ hash }) => {
+		const notFound = async ({ origin }) => {
+			const page = await env.ASSETS.fetch(new Request(`${origin}/${NOT_FOUND_PAGE}`));
+
+			return new Response(page.body, { status: 404, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+		};
+
+		const handleGet = async ({ hash, origin }) => {
 			const location = await getCache(hash);
 
 			if (!location) {
-				return responseWith({ status: 404 });
+				return notFound({ origin });
 			}
 
 			const validUrlLocation = location.startsWith('http') ? location : `https://${location}`;
 
-			return responseWith({ status: 302, headers: { Location: validUrlLocation } });
+			return responseWith({ status: 302, location: validUrlLocation });
 		};
 
-		const handlePost = async ({ hash, headers }) => {
+		const handlePost = async ({ hash, headers, origin }) => {
 			hash = hash || Math.random().toString(36).substring(2, 10);
 
-			const previousLocation = await getCache(hash);
-
-			if (previousLocation) {
-				return responseWith({ status: 409 });
+			if (!HASH_PATTERN.test(hash)) {
+				return errorWith('invalid_hash', 400);
 			}
 
 			const destination = headers.get('x-destination');
 
-			if (!isValidDestination(destination)) {
-				return responseWith({ status: 400 });
+			if (!destination || !isHttpUrl(destination)) {
+				return errorWith('invalid_destination', 400);
+			}
+
+			const previousLocation = await getCache(hash);
+
+			if (previousLocation) {
+				return errorWith('hash_taken', 409);
 			}
 
 			await setCache(hash, destination);
 
-			return responseWith({
-				status: 201,
-				contentType: 'application/json',
-				body: JSON.stringify({ hash, destination }),
-			});
+			/** @type {CreateLinkResponse} */
+			const body = { hash, shortUrl: `${origin}/${hash}`, destination };
+
+			return Response.json(body, { status: 201 });
 		};
 
-		const handleUpdate = async ({ hash, headers }) => {
-			if (!hash) {
-				return responseWith({ status: 400 });
+		const handleUpdate = async ({ hash, headers, origin }) => {
+			if (!HASH_PATTERN.test(hash)) {
+				return errorWith('invalid_hash', 400);
 			}
 
 			const previousLocation = await getCache(hash);
 
 			if (!previousLocation) {
-				return responseWith({ status: 404 });
+				return errorWith('not_found', 404);
 			}
 
 			const destination = headers.get('x-destination');
 
-			if (!isValidDestination(destination)) {
-				return responseWith({ status: 400 });
+			if (!destination || !isHttpUrl(destination)) {
+				return errorWith('invalid_destination', 400);
 			}
 
 			await setCache(hash, destination);
 
-			return responseWith({
-				status: 200,
-				contentType: 'application/json',
-				body: JSON.stringify({ hash, destination }),
-			});
+			/** @type {UpdateLinkResponse} */
+			const body = { hash, shortUrl: `${origin}/${hash}`, destination };
+
+			return Response.json(body);
 		};
 
 		const handleDelete = async ({ hash }) => {
@@ -91,35 +120,50 @@ export default {
 			return responseWith({ status: 204 });
 		};
 
-		const checkAuth = ({ auth }, callback) => (auth === env.AUTH_SECRET ? callback() : responseWith({ status: 401 }));
-
-		const renderUI = async () => {
+		const handleListLinks = async ({ origin }) => {
 			const { keys } = await getAllCache();
 
+			/** @type {ShortLink[]} */
 			const links = await Promise.all(
 				keys.map(async ({ name, metadata }) => ({
 					hash: name,
+					shortUrl: `${origin}/${name}`,
 					destination: metadata?.destination ?? (await getCache(name)) ?? '',
 				}))
 			);
 
-			const dataForScriptTag = JSON.stringify(links).replace(/</g, '\\u003c');
-			const body = component.replace('$DATA', dataForScriptTag);
+			/** @type {LinksResponse} */
+			const body = { links };
 
-			return responseWith({ body, contentType: 'text/html' });
+			return Response.json(body);
 		};
 
+		const handleApi = ({ hash, method, origin }) =>
+			hash === `${API_PREFIX}/links` && method === 'GET' ? handleListLinks({ origin }) : responseWith({ status: 404 });
+
+		const checkAuth = ({ auth }, callback) => (auth === env.AUTH_SECRET ? callback() : errorWith('unauthorized', 401));
+
 		const { headers, url, method } = request;
-		const { pathname } = new URL(url);
+		const { pathname, origin } = new URL(url);
 		const hash = pathname.slice(1);
 		const auth = headers.get('Authorization');
 
+		if (hash === API_PREFIX || hash.startsWith(`${API_PREFIX}/`)) {
+			return handleApi({ hash, method, origin });
+		}
+
+		const isAssetRequest = hash === '' || hash.startsWith(`${ASSETS_PREFIX}/`);
+
+		if (isAssetRequest && ['GET', 'HEAD'].includes(method)) {
+			return env.ASSETS.fetch(request);
+		}
+
 		if (method === 'GET') {
-			return hash !== '' ? handleGet({ hash }) : renderUI();
+			return handleGet({ hash, origin });
 		}
 
 		if (method === 'POST') {
-			return checkAuth({ auth }, () => handlePost({ hash, headers }));
+			return checkAuth({ auth }, () => handlePost({ hash, headers, origin }));
 		}
 
 		if (method === 'DELETE') {
@@ -127,7 +171,7 @@ export default {
 		}
 
 		if (['PUT', 'PATCH'].includes(method)) {
-			return checkAuth({ auth }, () => handleUpdate({ hash, headers }));
+			return checkAuth({ auth }, () => handleUpdate({ hash, headers, origin }));
 		}
 
 		return responseWith({ status: 405 });

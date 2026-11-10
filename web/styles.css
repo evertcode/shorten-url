@@ -1,0 +1,617 @@
+@import '@fontsource-variable/overpass/wght.css';
+
+:root {
+	color-scheme: light dark;
+
+	/* The ground changes between day and night. The signs do not. */
+	--color-ground: #e9e7e1;
+	--color-ink: #1b1b1b;
+	--color-ink-muted: #4b4f48;
+	--color-error: #a81f17;
+	--color-focus: #1b1b1b;
+
+	--color-sign: #00664f;
+	--color-sign-hover: #004d3b;
+	--color-legend: #ffffff;
+	--color-shield: #f2b705;
+	--color-plate: #ffffff;
+	--color-plate-ink: #1b1b1b;
+	--color-plate-muted: #585c55;
+	--color-plate-error: #a81f17;
+	--color-danger: #a81f17;
+	--color-danger-hover: #7f1711;
+
+	--font-sign: 'Overpass Variable', 'Overpass', 'Highway Gothic', 'Interstate', sans-serif;
+
+	--text-sm: 0.9375rem;
+	--text-base: 1.125rem;
+	--text-lg: 1.375rem;
+	--text-legend: clamp(1.625rem, 1.1rem + 2.1vw, 2.625rem);
+	--text-wordmark: clamp(1.75rem, 0.9rem + 4.2vw, 3.5rem);
+
+	--space-1: 0.25rem;
+	--space-2: 0.5rem;
+	--space-3: 0.75rem;
+	--space-4: 1rem;
+	--space-5: 1.5rem;
+	--space-6: 2.25rem;
+	--space-7: 3.5rem;
+
+	--radius-control: 0.375rem;
+	--radius-plate: 0.625rem;
+	--radius-sign: 0.875rem;
+	--border-plate: 2px solid var(--color-plate-ink);
+	--control-height: 3.25rem;
+	--ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@media (prefers-color-scheme: dark) {
+	:root {
+		--color-ground: #181b1a;
+		--color-ink: #f1efe9;
+		--color-ink-muted: #b7bbb2;
+		--color-error: #ffa197;
+		--color-focus: #f2b705;
+		--color-plate: #f4f2ec;
+	}
+}
+
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
+}
+
+html {
+	scrollbar-color: var(--color-ink-muted) var(--color-ground);
+}
+
+body {
+	margin: 0;
+	background-color: var(--color-ground);
+	color: var(--color-ink);
+	font-family: var(--font-sign);
+	font-size: var(--text-base);
+	line-height: 1.45;
+	accent-color: var(--color-sign);
+	caret-color: var(--color-sign);
+}
+
+::selection {
+	background-color: var(--color-shield);
+	color: var(--color-plate-ink);
+}
+
+h1,
+h2,
+p {
+	margin: 0;
+}
+
+h2 {
+	font-size: var(--text-lg);
+	font-weight: 800;
+	line-height: 1.2;
+	text-wrap: balance;
+}
+
+[hidden] {
+	display: none !important;
+}
+
+:focus-visible {
+	outline: 3px solid var(--color-focus);
+	outline-offset: 3px;
+}
+
+.sprite {
+	position: absolute;
+	width: 0;
+	height: 0;
+}
+
+.arrow {
+	flex: none;
+	width: 1.5em;
+	height: 1.5em;
+}
+
+/* Layout */
+
+.page {
+	width: 100%;
+	max-width: 82rem;
+	margin: 0 auto;
+	padding: var(--space-5) clamp(var(--space-4), 4vw, var(--space-7)) var(--space-7);
+}
+
+.layout {
+	display: grid;
+	gap: var(--space-7) var(--space-7);
+	margin-top: var(--space-6);
+}
+
+.create,
+.links {
+	min-width: 0;
+}
+
+.create > h2,
+.links > h2 {
+	margin-bottom: var(--space-4);
+}
+
+/* Guide signs: green panel, white keyline, white legend */
+
+.sign {
+	border-radius: var(--radius-sign);
+	background-color: var(--color-sign);
+	box-shadow:
+		inset 0 0 0 4px var(--color-sign),
+		inset 0 0 0 7px var(--color-legend);
+	color: var(--color-legend);
+	--color-focus: var(--color-legend);
+}
+
+.sign ::selection {
+	background-color: var(--color-legend);
+	color: var(--color-sign);
+}
+
+.masthead {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-5);
+	padding: var(--space-5) clamp(var(--space-5), 3vw, var(--space-6));
+}
+
+.masthead-legend {
+	display: grid;
+	gap: var(--space-2);
+	min-width: 0;
+}
+
+.wordmark {
+	font-size: var(--text-wordmark);
+	font-weight: 800;
+	line-height: 1;
+	letter-spacing: -0.01em;
+	padding-top: 0.12em;
+	overflow-wrap: anywhere;
+}
+
+.masthead-lead {
+	font-size: var(--text-sm);
+	font-weight: 500;
+}
+
+.arrow-exit {
+	width: var(--text-wordmark);
+	height: var(--text-wordmark);
+	rotate: -45deg;
+}
+
+/* Regulatory plates: white panel, black border. Where things are typed or stated. */
+
+.plate {
+	border: var(--border-plate);
+	border-radius: var(--radius-plate);
+	background-color: var(--color-plate);
+	color: var(--color-plate-ink);
+	--color-focus: var(--color-plate-ink);
+}
+
+/* Form */
+
+.form {
+	display: grid;
+	gap: var(--space-5);
+}
+
+.field {
+	display: grid;
+	gap: var(--space-2);
+	min-width: 0;
+}
+
+label {
+	font-size: var(--text-base);
+	font-weight: 600;
+}
+
+.input {
+	width: 100%;
+	min-width: 0;
+	height: var(--control-height);
+	padding: 0.15em var(--space-4) 0;
+	border: var(--border-plate);
+	border-radius: var(--radius-control);
+	background-color: var(--color-plate);
+	color: var(--color-plate-ink);
+	font: inherit;
+}
+
+.input::placeholder {
+	color: var(--color-plate-muted);
+	opacity: 1;
+}
+
+.input[aria-invalid='true'],
+.input-group:has([aria-invalid='true']) {
+	border-color: var(--color-plate-error);
+	box-shadow: inset 0 0 0 2px var(--color-plate-error);
+}
+
+.input-group {
+	display: flex;
+	align-items: center;
+	min-width: 0;
+	height: var(--control-height);
+	border: var(--border-plate);
+	border-radius: var(--radius-control);
+	background-color: var(--color-plate);
+	color: var(--color-plate-ink);
+}
+
+.input-group:focus-within {
+	outline: 3px solid var(--color-focus);
+	outline-offset: 3px;
+}
+
+.input-group .input {
+	height: 100%;
+	padding-inline-start: 0;
+	border: 0;
+	background-color: transparent;
+	box-shadow: none;
+}
+
+.input-group .input:focus-visible {
+	outline: none;
+}
+
+.input-prefix {
+	flex: none;
+	max-width: 62%;
+	padding: 0.15em 0 0 var(--space-4);
+	overflow: hidden;
+	color: var(--color-plate-muted);
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.field-hint,
+.field-error {
+	font-size: var(--text-sm);
+}
+
+.field-hint {
+	color: var(--color-ink-muted);
+}
+
+.field:has(.field-error:not([hidden])) .field-hint {
+	display: none;
+}
+
+.field-error {
+	color: var(--color-error);
+	font-weight: 700;
+}
+
+.notice {
+	padding: var(--space-3) var(--space-4);
+	border: 2px solid var(--color-plate-error);
+	border-radius: var(--radius-control);
+	background-color: var(--color-plate);
+	color: var(--color-plate-error);
+	font-size: var(--text-sm);
+	font-weight: 700;
+}
+
+/* Buttons */
+
+.button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: var(--space-2);
+	min-height: var(--control-height);
+	padding: 0.15em var(--space-5) 0;
+	border: 2px solid transparent;
+	border-radius: var(--radius-control);
+	font: inherit;
+	font-weight: 800;
+	text-decoration: none;
+	white-space: nowrap;
+	cursor: pointer;
+	transition:
+		background-color 120ms var(--ease-out),
+		color 120ms var(--ease-out);
+}
+
+.button-primary {
+	background-color: var(--color-sign);
+	color: var(--color-legend);
+	font-size: var(--text-lg);
+}
+
+.button-primary:hover {
+	background-color: var(--color-sign-hover);
+}
+
+.button-primary:active {
+	translate: 0 1px;
+}
+
+.button-plate {
+	min-height: 2.5rem;
+	padding-inline: var(--space-4);
+	border-color: var(--color-plate-ink);
+	background-color: var(--color-plate);
+	color: var(--color-plate-ink);
+	font-size: var(--text-sm);
+}
+
+.button-plate:hover {
+	background-color: var(--color-plate-ink);
+	color: var(--color-plate);
+}
+
+.button-solid {
+	background-color: var(--color-plate-ink);
+	color: var(--color-plate);
+}
+
+.button-solid:hover {
+	background-color: var(--color-sign);
+	border-color: var(--color-sign);
+	color: var(--color-legend);
+}
+
+.button-danger {
+	border-color: var(--color-danger);
+	background-color: var(--color-danger);
+	color: var(--color-legend);
+}
+
+.button-danger:hover {
+	border-color: var(--color-danger-hover);
+	background-color: var(--color-danger-hover);
+	color: var(--color-legend);
+}
+
+.sign .button-plate {
+	border-color: var(--color-legend);
+	background-color: var(--color-legend);
+	color: var(--color-sign);
+}
+
+.sign .button-plate:hover {
+	background-color: var(--color-sign);
+	color: var(--color-legend);
+}
+
+.button:disabled {
+	cursor: progress;
+	opacity: 0.7;
+}
+
+/* Result: a guide sign that points at the destination */
+
+.result {
+	display: grid;
+	gap: var(--space-2);
+	margin-top: var(--space-6);
+	padding: var(--space-5) clamp(var(--space-5), 3vw, var(--space-6));
+	animation: sign-wipe 360ms var(--ease-out);
+}
+
+.result-title {
+	font-size: var(--text-base);
+	font-weight: 600;
+}
+
+.result-link {
+	justify-self: start;
+	max-width: 100%;
+	border-radius: var(--radius-control);
+	color: inherit;
+	font-size: var(--text-legend);
+	font-weight: 800;
+	line-height: 1.1;
+	text-decoration-thickness: 0.06em;
+	text-underline-offset: 0.16em;
+	overflow-wrap: anywhere;
+}
+
+.result-foot {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	min-width: 0;
+	margin-top: var(--space-2);
+}
+
+.result-destination {
+	min-width: 0;
+	overflow: hidden;
+	font-size: var(--text-sm);
+	font-weight: 500;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+@keyframes sign-wipe {
+	from {
+		clip-path: inset(0 100% 0 0 round var(--radius-sign));
+	}
+
+	to {
+		clip-path: inset(0 0 0 0 round var(--radius-sign));
+	}
+}
+
+/* Links: a column of route markers, each pointing at where it leads */
+
+.links-status {
+	color: var(--color-ink-muted);
+}
+
+.links-notice {
+	margin-bottom: var(--space-4);
+	font-weight: 700;
+}
+
+.links h2:focus-visible {
+	outline-offset: 6px;
+}
+
+.links-list {
+	display: grid;
+	gap: var(--space-3);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.link-row {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr) auto;
+	align-items: center;
+	gap: var(--space-3) var(--space-3);
+	padding: var(--space-3) var(--space-4);
+	border: var(--border-plate);
+	border-radius: var(--radius-plate);
+	background-color: var(--color-plate);
+	color: var(--color-plate-ink);
+	--color-focus: var(--color-plate-ink);
+}
+
+.shield {
+	grid-column: 1 / 3;
+	justify-self: start;
+	min-width: 0;
+	max-width: 100%;
+	padding: 0.4em var(--space-4) 0.25em;
+	overflow: hidden;
+	border: 3px solid var(--color-plate-ink);
+	border-radius: var(--radius-control);
+	background-color: var(--color-shield);
+	color: var(--color-plate-ink);
+	font-size: var(--text-lg);
+	font-weight: 800;
+	line-height: 1.1;
+	text-decoration: none;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.shield:hover {
+	background-color: var(--color-plate-ink);
+	color: var(--color-shield);
+}
+
+.link-row .arrow {
+	color: var(--color-sign);
+}
+
+.link-row .arrow {
+	grid-column: 1;
+}
+
+.link-destination,
+.link-editor,
+.link-confirm {
+	grid-column: 2 / -1;
+}
+
+.link-destination {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.link-editor {
+	height: 2.5rem;
+	padding-inline: var(--space-3);
+}
+
+.link-confirm {
+	color: var(--color-plate-error);
+	font-weight: 800;
+}
+
+.link-actions {
+	display: flex;
+	grid-row: 1;
+	grid-column: 3;
+	gap: var(--space-2);
+}
+
+.link-actions .button {
+	padding-inline: var(--space-3);
+}
+
+.row-error {
+	grid-column: 1 / -1;
+	margin-top: var(--space-2);
+	color: var(--color-plate-error);
+	font-size: var(--text-sm);
+	font-weight: 700;
+}
+
+/* Not found */
+
+.not-found {
+	display: grid;
+	justify-items: start;
+	gap: var(--space-4);
+	max-width: 40rem;
+	margin-top: var(--space-6);
+	padding: var(--space-6);
+}
+
+.not-found h1 {
+	font-size: var(--text-legend);
+	font-weight: 800;
+	line-height: 1.1;
+	text-wrap: balance;
+}
+
+.not-found .button {
+	margin-top: var(--space-2);
+}
+
+@media (max-width: 34rem) {
+	.shield {
+		grid-column: 1 / -1;
+	}
+
+	.link-actions {
+		grid-row: 3;
+		grid-column: 1 / -1;
+		flex-wrap: wrap;
+	}
+
+	.not-found {
+		padding: var(--space-5);
+	}
+}
+
+@media (min-width: 62rem) {
+	.layout {
+		grid-template-columns: minmax(20rem, 26rem) minmax(0, 1fr);
+		align-items: start;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		transition-duration: 0.01ms !important;
+		animation-duration: 0.01ms !important;
+	}
+}

@@ -1,153 +1,244 @@
-import { env, createExecutionContext, waitOnExecutionContext } from 'cloudflare:test';
-import { describe, it, expect, beforeEach } from 'vitest';
-import worker from '../src';
+import { env, SELF } from 'cloudflare:test';
+import { beforeEach, describe, expect, it } from 'vitest';
 
-const AUTH = env.AUTH_SECRET;
+const ORIGIN = 'http://example.com';
+const ACCESS_CODE = env.AUTH_SECRET;
 
-const request = (path, { method = 'GET', headers = {} } = {}) => {
-	const ctx = createExecutionContext();
-	const req = new Request(`http://example.com${path}`, { method, headers });
-	return Promise.resolve(worker.fetch(req, env, ctx)).then(async (response) => {
-		await waitOnExecutionContext(ctx);
-		return response;
-	});
+const clearLinks = async () => {
+	const { keys } = await env.URLS.list();
+
+	await Promise.all(keys.map(({ name }) => env.URLS.delete(name)));
 };
 
-beforeEach(async () => {
-	const { keys } = await env.URLS.list();
-	await Promise.all(keys.map(({ name }) => env.URLS.delete(name)));
-});
+describe('URL shortener worker', () => {
+	beforeEach(clearLinks);
 
-describe('GET /:hash', () => {
-	it('redirects to the stored destination', async () => {
-		await env.URLS.put('demo', 'https://example.com', { metadata: { destination: 'https://example.com' } });
+	describe('GET /', () => {
+		it('serves the page from the static assets', async () => {
+			const response = await SELF.fetch(`${ORIGIN}/`);
 
-		const response = await request('/demo');
-
-		expect(response.status).toBe(302);
-		expect(response.headers.get('Location')).toBe('https://example.com');
+			expect(response.status).toBe(200);
+			expect(response.headers.get('Content-Type')).toContain('text/html');
+			expect(await response.text()).toContain('id="create-form"');
+		});
 	});
 
-	it('returns 404 for a missing hash instead of throwing', async () => {
-		const response = await request('/does-not-exist');
+	describe('GET /api/links', () => {
+		it('includes hash, shortUrl and destination for each link', async () => {
+			await env.URLS.put('docs', 'https://example.org/docs');
+			await env.URLS.put('blog', 'https://example.org/blog');
 
-		expect(response.status).toBe(404);
-	});
-});
+			const response = await SELF.fetch(`${ORIGIN}/api/links`);
 
-describe('POST /:hash', () => {
-	it('creates a link with a generated hash and returns it as JSON', async () => {
-		const response = await request('/', {
-			method: 'POST',
-			headers: { Authorization: AUTH, 'X-Destination': 'https://example.com' },
+			expect(response.status).toBe(200);
+			expect(response.headers.get('Content-Type')).toContain('application/json');
+			expect(await response.json()).toEqual({
+				links: [
+					{ hash: 'blog', shortUrl: `${ORIGIN}/blog`, destination: 'https://example.org/blog' },
+					{ hash: 'docs', shortUrl: `${ORIGIN}/docs`, destination: 'https://example.org/docs' },
+				],
+			});
 		});
 
-		expect(response.status).toBe(201);
-		const body = await response.json();
-		expect(body.hash).toBeTruthy();
-		expect(body.destination).toBe('https://example.com');
-	});
+		it('reads the destination of links created through the API from the key metadata', async () => {
+			await SELF.fetch(`${ORIGIN}/docs`, {
+				method: 'POST',
+				headers: { Authorization: ACCESS_CODE, 'X-Destination': 'https://example.org/docs' },
+			});
 
-	it('creates a link with a custom hash', async () => {
-		const response = await request('/custom', {
-			method: 'POST',
-			headers: { Authorization: AUTH, 'X-Destination': 'https://example.com' },
+			const { keys } = await env.URLS.list();
+			const response = await SELF.fetch(`${ORIGIN}/api/links`);
+
+			expect(keys[0].metadata).toEqual({ destination: 'https://example.org/docs' });
+			expect(await response.json()).toEqual({
+				links: [{ hash: 'docs', shortUrl: `${ORIGIN}/docs`, destination: 'https://example.org/docs' }],
+			});
 		});
 
-		expect(response.status).toBe(201);
-		expect(await env.URLS.get('custom')).toBe('https://example.com');
+		it('returns an empty list when there are no links', async () => {
+			const response = await SELF.fetch(`${ORIGIN}/api/links`);
+
+			expect(response.status).toBe(200);
+			expect(await response.json()).toEqual({ links: [] });
+		});
 	});
 
-	it('returns 409 when the hash already exists', async () => {
-		await env.URLS.put('taken', 'https://example.com', { metadata: { destination: 'https://example.com' } });
+	describe('GET /{hash}', () => {
+		it('redirects with 302 to the stored destination', async () => {
+			await env.URLS.put('docs', 'https://example.org/docs');
 
-		const response = await request('/taken', {
-			method: 'POST',
-			headers: { Authorization: AUTH, 'X-Destination': 'https://other.com' },
+			const response = await SELF.fetch(`${ORIGIN}/docs`, { redirect: 'manual' });
+
+			expect(response.status).toBe(302);
+			expect(response.headers.get('Location')).toBe('https://example.org/docs');
 		});
 
-		expect(response.status).toBe(409);
-	});
+		it('redirects to the https version of a destination stored without a scheme', async () => {
+			await env.URLS.put('docs', 'example.org/docs');
 
-	it('returns 400 for an invalid destination', async () => {
-		const response = await request('/bad', {
-			method: 'POST',
-			headers: { Authorization: AUTH, 'X-Destination': '' },
+			const response = await SELF.fetch(`${ORIGIN}/docs`, { redirect: 'manual' });
+
+			expect(response.status).toBe(302);
+			expect(response.headers.get('Location')).toBe('https://example.org/docs');
 		});
 
-		expect(response.status).toBe(400);
+		it('returns 404 with an HTML page for an unknown hash', async () => {
+			const response = await SELF.fetch(`${ORIGIN}/missing`);
+
+			expect(response.status).toBe(404);
+			expect(response.headers.get('Content-Type')).toContain('text/html');
+			expect(await response.text()).toContain('<h1>Link not found</h1>');
+		});
 	});
 
-	it('returns 401 when the auth header does not match', async () => {
-		const response = await request('/blocked', {
-			method: 'POST',
-			headers: { Authorization: 'wrong-secret', 'X-Destination': 'https://example.com' },
+	describe('POST /{hash}', () => {
+		const post = (path, headers) => SELF.fetch(`${ORIGIN}${path}`, { method: 'POST', headers });
+		const validHeaders = { Authorization: ACCESS_CODE, 'X-Destination': 'https://example.org/docs' };
+
+		it('returns 201 with hash, shortUrl and destination in the JSON body', async () => {
+			const response = await post('/docs', validHeaders);
+
+			expect(response.status).toBe(201);
+			expect(response.headers.get('Content-Type')).toContain('application/json');
+			expect(await response.json()).toEqual({
+				hash: 'docs',
+				shortUrl: `${ORIGIN}/docs`,
+				destination: 'https://example.org/docs',
+			});
+			expect(await env.URLS.get('docs')).toBe('https://example.org/docs');
 		});
 
-		expect(response.status).toBe(401);
-	});
-});
+		it('generates a hash when none is given and returns it in the JSON body', async () => {
+			const response = await post('/', validHeaders);
+			const { hash, shortUrl } = await response.json();
 
-describe('PUT/PATCH /:hash', () => {
-	it('updates the destination of an existing hash', async () => {
-		await env.URLS.put('demo', 'https://old.com', { metadata: { destination: 'https://old.com' } });
-
-		const response = await request('/demo', {
-			method: 'PATCH',
-			headers: { Authorization: AUTH, 'X-Destination': 'https://new.com' },
+			expect(response.status).toBe(201);
+			expect(hash).toMatch(/^[a-z0-9]+$/);
+			expect(shortUrl).toBe(`${ORIGIN}/${hash}`);
+			expect(await env.URLS.get(hash)).toBe('https://example.org/docs');
 		});
 
-		expect(response.status).toBe(200);
-		expect(await env.URLS.get('demo')).toBe('https://new.com');
-	});
+		it('returns 409 with hash_taken when the hash already exists', async () => {
+			await env.URLS.put('docs', 'https://example.org/original');
 
-	it('returns 404 when updating a hash that does not exist', async () => {
-		const response = await request('/missing', {
-			method: 'PUT',
-			headers: { Authorization: AUTH, 'X-Destination': 'https://new.com' },
+			const response = await post('/docs', validHeaders);
+
+			expect(response.status).toBe(409);
+			expect(await response.json()).toEqual({ error: 'hash_taken' });
+			expect(await env.URLS.get('docs')).toBe('https://example.org/original');
 		});
 
-		expect(response.status).toBe(404);
-	});
+		it('returns 401 with unauthorized without a valid access code', async () => {
+			const response = await post('/docs', { ...validHeaders, Authorization: 'wrong-code' });
 
-	it('returns 401 when the auth header does not match', async () => {
-		await env.URLS.put('demo', 'https://old.com', { metadata: { destination: 'https://old.com' } });
-
-		const response = await request('/demo', {
-			method: 'PUT',
-			headers: { Authorization: 'wrong-secret', 'X-Destination': 'https://new.com' },
+			expect(response.status).toBe(401);
+			expect(await response.json()).toEqual({ error: 'unauthorized' });
+			expect(await env.URLS.get('docs')).toBeNull();
 		});
 
-		expect(response.status).toBe(401);
+		it('returns 400 with invalid_destination without X-Destination', async () => {
+			const response = await post('/docs', { Authorization: ACCESS_CODE });
+
+			expect(response.status).toBe(400);
+			expect(await response.json()).toEqual({ error: 'invalid_destination' });
+			expect(await env.URLS.get('docs')).toBeNull();
+		});
+
+		it('returns 400 with invalid_destination for a non http(s) destination', async () => {
+			const response = await post('/docs', { ...validHeaders, 'X-Destination': 'javascript:alert(1)' });
+
+			expect(response.status).toBe(400);
+			expect(await response.json()).toEqual({ error: 'invalid_destination' });
+			expect(await env.URLS.get('docs')).toBeNull();
+		});
+
+		it('returns 400 with invalid_hash for a hash with unsupported characters', async () => {
+			const response = await post('/my%20docs', validHeaders);
+			const { keys } = await env.URLS.list();
+
+			expect(response.status).toBe(400);
+			expect(await response.json()).toEqual({ error: 'invalid_hash' });
+			expect(keys).toHaveLength(0);
+		});
+
+		it('does not include a Location header in non redirect responses', async () => {
+			const response = await post('/docs', validHeaders);
+
+			expect(response.headers.has('Location')).toBe(false);
+		});
+
+		it('rejects the reserved api prefix', async () => {
+			const response = await post('/api', validHeaders);
+
+			expect(response.status).toBe(404);
+			expect(await env.URLS.get('api')).toBeNull();
+		});
 	});
-});
 
-describe('DELETE /:hash', () => {
-	it('removes an existing link', async () => {
-		await env.URLS.put('demo', 'https://example.com', { metadata: { destination: 'https://example.com' } });
+	describe('PUT/PATCH /{hash}', () => {
+		const update = (method, path, headers) => SELF.fetch(`${ORIGIN}${path}`, { method, headers });
+		const validHeaders = { Authorization: ACCESS_CODE, 'X-Destination': 'https://example.org/new' };
 
-		const response = await request('/demo', { method: 'DELETE', headers: { Authorization: AUTH } });
+		it.each(['PUT', 'PATCH'])('updates the destination of an existing hash with %s', async (method) => {
+			await env.URLS.put('docs', 'https://example.org/old');
 
-		expect(response.status).toBe(204);
-		expect(await env.URLS.get('demo')).toBeNull();
+			const response = await update(method, '/docs', validHeaders);
+
+			expect(response.status).toBe(200);
+			expect(await response.json()).toEqual({ hash: 'docs', shortUrl: `${ORIGIN}/docs`, destination: 'https://example.org/new' });
+			expect(await env.URLS.get('docs')).toBe('https://example.org/new');
+		});
+
+		it('returns 404 with not_found when the hash does not exist', async () => {
+			const response = await update('PATCH', '/missing', validHeaders);
+
+			expect(response.status).toBe(404);
+			expect(await response.json()).toEqual({ error: 'not_found' });
+			expect(await env.URLS.get('missing')).toBeNull();
+		});
+
+		it('returns 400 with invalid_destination for a non http(s) destination', async () => {
+			await env.URLS.put('docs', 'https://example.org/old');
+
+			const response = await update('PATCH', '/docs', { ...validHeaders, 'X-Destination': 'not a url' });
+
+			expect(response.status).toBe(400);
+			expect(await response.json()).toEqual({ error: 'invalid_destination' });
+			expect(await env.URLS.get('docs')).toBe('https://example.org/old');
+		});
+
+		it('returns 401 with unauthorized without a valid access code', async () => {
+			await env.URLS.put('docs', 'https://example.org/old');
+
+			const response = await update('PATCH', '/docs', { ...validHeaders, Authorization: 'wrong-code' });
+
+			expect(response.status).toBe(401);
+			expect(await response.json()).toEqual({ error: 'unauthorized' });
+			expect(await env.URLS.get('docs')).toBe('https://example.org/old');
+		});
 	});
 
-	it('returns 401 when the auth header does not match', async () => {
-		const response = await request('/demo', { method: 'DELETE', headers: { Authorization: 'wrong-secret' } });
+	describe('DELETE /{hash}', () => {
+		it('returns 204 and removes the link with a valid access code', async () => {
+			await env.URLS.put('docs', 'https://example.org/docs');
 
-		expect(response.status).toBe(401);
-	});
-});
+			const response = await SELF.fetch(`${ORIGIN}/docs`, {
+				method: 'DELETE',
+				headers: { Authorization: ACCESS_CODE },
+			});
 
-describe('GET /', () => {
-	it('renders the UI with the list of links embedded as JSON', async () => {
-		await env.URLS.put('demo', 'https://example.com', { metadata: { destination: 'https://example.com' } });
+			expect(response.status).toBe(204);
+			expect(await env.URLS.get('docs')).toBeNull();
+		});
 
-		const response = await request('/');
+		it('returns 401 with unauthorized without a valid access code', async () => {
+			await env.URLS.put('docs', 'https://example.org/docs');
 
-		expect(response.status).toBe(200);
-		const html = await response.text();
-		expect(html).toContain('"hash":"demo"');
-		expect(html).toContain('"destination":"https://example.com"');
+			const response = await SELF.fetch(`${ORIGIN}/docs`, { method: 'DELETE', headers: { Authorization: 'wrong-code' } });
+
+			expect(response.status).toBe(401);
+			expect(await response.json()).toEqual({ error: 'unauthorized' });
+			expect(await env.URLS.get('docs')).toBe('https://example.org/docs');
+		});
 	});
 });

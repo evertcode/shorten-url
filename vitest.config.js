@@ -6,7 +6,7 @@ export default defineWorkersConfig({
 			workers: {
 				wrangler: { configPath: './wrangler.toml' },
 				miniflare: {
-					bindings: { AUTH_SECRET: 'test-secret' },
+					bindings: { AUTH_SECRET: 'test-access-code' },
 				},
 			},
 		},
