@@ -1,5 +1,10 @@
-import { escapeHtml } from './escape.js';
-import component from './component.html';
+const API_PREFIX = 'api';
+const ASSETS_PREFIX = 'assets';
+
+/**
+ * @typedef {{ hash: string }} ShortLink
+ * @typedef {{ links: ShortLink[] }} LinksResponse
+ */
 
 export default {
 	async fetch(request, env, ctx) {
@@ -46,27 +51,19 @@ export default {
 			return responseWith({ status: 204 });
 		};
 
-		const checkAuth = ({ auth }, callback) => (auth === env.AUTH_SECRET ? callback() : responseWith({ status: 401 }));
-
-		const renderUI = async () => {
+		const handleListLinks = async () => {
 			const { keys } = await getAllCache();
-			const allKeys = keys.map(({ name }) => name);
-			const body = component.replace(
-				'$DATA',
-				`${allKeys
-					.map(
-						(key) =>
-							`<div class="flex flex-col sm:flex-row items-center gap-2"><a href="/${key}" class="flex-1 text-blue-400">${key}</a></div>`
-					)
-					.join('')}`
-			);
 
-			console.log({ keys, allKeys });
+			/** @type {LinksResponse} */
+			const body = { links: keys.map(({ name }) => ({ hash: name })) };
 
-			return new Response(body, {
-				headers: { 'Content-Type': 'text/html' },
-			});
+			return Response.json(body);
 		};
+
+		const handleApi = ({ hash, method }) =>
+			hash === `${API_PREFIX}/links` && method === 'GET' ? handleListLinks() : responseWith({ status: 404 });
+
+		const checkAuth = ({ auth }, callback) => (auth === env.AUTH_SECRET ? callback() : responseWith({ status: 401 }));
 
 		const { headers, url, method } = request;
 		const { pathname } = new URL(url);
@@ -75,8 +72,18 @@ export default {
 
 		console.log({ hash, auth, method, pathname });
 
+		if (hash === API_PREFIX || hash.startsWith(`${API_PREFIX}/`)) {
+			return handleApi({ hash, method });
+		}
+
+		const isAssetRequest = hash === '' || hash.startsWith(`${ASSETS_PREFIX}/`);
+
+		if (isAssetRequest && ['GET', 'HEAD'].includes(method)) {
+			return env.ASSETS.fetch(request);
+		}
+
 		if (method === 'GET') {
-			return hash !== '' ? handleGet({ hash }) : renderUI();
+			return handleGet({ hash });
 		}
 
 		if (method === 'POST') {

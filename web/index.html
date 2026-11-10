@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width,initial-scale=1" />
+		<title>link - 🔗 Short your urls</title>
+		<link rel="stylesheet" href="./styles.css" />
+	</head>
+	<body>
+		<main class="page">
+			<div class="stack">
+				<h1>URL Shortener</h1>
+				<p class="muted">Enter a long URL and we'll shorten it for you.</p>
+			</div>
+			<div class="fields">
+				<input id="link" class="input" placeholder="https://example.com/long-url" type="url" />
+				<div class="row">
+					<input id="hash" class="input" placeholder="Enter hash" type="text" />
+					<input id="auth" class="input" placeholder="Enter verification code" type="password" />
+				</div>
+				<div class="actions">
+					<button id="create" class="button" type="submit">Shorten</button>
+				</div>
+				<div id="result"></div>
+			</div>
+			<div class="stack">
+				<h2>Recent URLs</h2>
+				<div id="links" class="stack"></div>
+			</div>
+		</main>
+		<script type="module" src="./main.ts"></script>
+	</body>
+</html>

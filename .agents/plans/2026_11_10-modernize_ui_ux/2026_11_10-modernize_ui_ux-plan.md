@@ -9,6 +9,16 @@ created_by:
     name: "Claude Fable"
     version: "5.2"
     reasoning_effort: "unspecified"
+
+implemented_by:
+  tool: "Claude Code"
+  model:
+    name: "Claude Fable"
+    version: "5.2"
+    reasoning_effort: "unspecified"
+
+last_implementation_at: "2026-11-10T20:37:23Z"
+has_completed_all_phases: "false"
 ---
 
 # Modernize the UI and UX of the URL shortener
@@ -83,19 +93,27 @@ Public contracts:
 
 To-do:
 
-- [ ] Create a feature branch for the work.
-- [ ] Read the current Wrangler static assets docs and the `@cloudflare/vitest-pool-workers` docs. Upgrade `wrangler`, `vitest` and `@cloudflare/vitest-pool-workers` to versions that support the assets binding.
-- [ ] Add `vite` and `typescript` as dev dependencies. Add `vite.config.ts` (root `web/`, output `dist/`) and a `tsconfig.json` scoped to `web/`.
-- [ ] Create `web/index.html`, `web/main.ts` and `web/styles.css` by moving the markup, script and styles out of `src/component.html`. Keep the current look by porting the few Tailwind utilities in use to plain CSS. Remove the CDN link and the dead shadcn tokens.
-- [ ] Add `web/types.ts` with the `ShortLink` type and use it in `web/main.ts`.
-- [ ] Add the `[assets]` binding to `wrangler.toml` pointing to `dist/`, configured so the Worker still handles `/api/*` and `/{hash}`.
-- [ ] Add `GET /api/links` to `src/index.js` and reserve the `api` hash. Remove `renderUI()`, the `$DATA` replacement, `src/component.html` and the unused `src/escape.js`.
-- [ ] Make `web/main.ts` fetch `GET /api/links` and render the list with DOM APIs (`textContent`), not HTML strings.
-- [ ] Update `package.json` scripts: `build` (`vite build`), `dev` and `deploy` building first, `typecheck` (`tsc --noEmit`), `verify` (`typecheck` + `vitest run` + `build`). Add `dist/` to `.gitignore`.
-- [ ] Replace the "Hello World" tests in `test/index.spec.js` with the test cases listed above.
-- [ ] Run `npm run dev` and check in the browser that creating a link and the links list still work.
-- [ ] Verify the changes in terms of typechecking, linting and tests using the project's verification command (`npm run verify`). Fix issues if any.
-- [ ] STOP. Present the changes to the user for review and suggest commit messages (or pull request titles, when the phases are implemented through pull requests). Do NOT proceed to the next phase until the user explicitly asks.
+- [x] Create a feature branch for the work.
+- [x] Read the current Wrangler static assets docs and the `@cloudflare/vitest-pool-workers` docs. Upgrade `wrangler`, `vitest` and `@cloudflare/vitest-pool-workers` to versions that support the assets binding.
+- [x] Add `vite` and `typescript` as dev dependencies. Add `vite.config.ts` (root `web/`, output `dist/`) and a `tsconfig.json` scoped to `web/`.
+- [x] Create `web/index.html`, `web/main.ts` and `web/styles.css` by moving the markup, script and styles out of `src/component.html`. Keep the current look by porting the few Tailwind utilities in use to plain CSS. Remove the CDN link and the dead shadcn tokens.
+- [x] Add `web/types.ts` with the `ShortLink` type and use it in `web/main.ts`.
+- [x] Add the `[assets]` binding to `wrangler.toml` pointing to `dist/`, configured so the Worker still handles `/api/*` and `/{hash}`.
+- [x] Add `GET /api/links` to `src/index.js` and reserve the `api` hash. Remove `renderUI()`, the `$DATA` replacement, `src/component.html` and the unused `src/escape.js`.
+- [x] Make `web/main.ts` fetch `GET /api/links` and render the list with DOM APIs (`textContent`), not HTML strings.
+- [x] Update `package.json` scripts: `build` (`vite build`), `dev` and `deploy` building first, `typecheck` (`tsc --noEmit`), `verify` (`typecheck` + `vitest run` + `build`). Add `dist/` to `.gitignore`.
+- [x] Replace the "Hello World" tests in `test/index.spec.js` with the test cases listed above.
+- [x] Run `npm run dev` and check in the browser that creating a link and the links list still work.
+- [x] Verify the changes in terms of typechecking, linting and tests using the project's verification command (`npm run verify`). Fix issues if any.
+- [x] STOP. Present the changes to the user for review and suggest commit messages (or pull request titles, when the phases are implemented through pull requests). Do NOT proceed to the next phase until the user explicitly asks.
+
+Implementation notes:
+
+- Tooling is pinned to `wrangler 4.16.1`, `@cloudflare/vitest-pool-workers 0.8.32`, `vitest ~3.1` and `vite ^7`. Newer Workers runtimes (workerd after 1.20250508) do not start on the development machine (macOS 12.6, minimum required 13.5). Unpin and migrate to `@cloudflare/vitest-plugin` once the machine or the runtime target changes.
+- The assets binding uses `run_worker_first = true` because route patterns are not available in the pinned Wrangler. The Worker forwards `GET /` and `GET /assets/*` to `env.ASSETS`, so the `assets/` prefix is reserved alongside `api`.
+- `verify` runs typecheck, then build, then tests: the test runtime needs `dist/` to exist.
+- `package.json` now declares `"type": "module"`.
+- Extra test cases added: `GET /` serves the page from the static assets, `POST /` generates a hash when none is given, `POST /api` is rejected.
 
 ### Phase 2: New visual system and complete link creation flow
 
@@ -187,6 +205,6 @@ To-do:
 
 ## ⏭️ Next step
 
-Implement Phase 1: move the current page onto the Vite + Workers assets pipeline with `GET /api/links`, the `verify` command and real tests.
+Implement Phase 2: build the new visual system and the complete link creation flow, with the JSON response on create, the copy button and the specific error messages.
 
-Short links, long shell: plan carried at full speed by 🐢 💨 (Turbotuga™, [Codely](https://codely.com)'s mascot).
+Old shell, new pipeline: the build was laid before the paint. 🧱 🐢 💨 (Turbotuga™, [Codely](https://codely.com)'s mascot).
