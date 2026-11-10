@@ -29,10 +29,9 @@ The links live on the owner's own domain and in their own Cloudflare account. It
 
 - Create a short link, with a custom or random alias.
 - See the created short link and copy it.
-- List existing links with their destinations and copy any of them.
+- List existing links with their destinations, copy any of them, change a destination or delete a link. Editing and deleting use the access code typed in the form.
 - Unknown short links answer with a "Link not found" page.
-- Deleting links exists in the HTTP API only, not in the page.
-- No analytics, click counts, expiry dates or editing.
+- No analytics, click counts or expiry dates. An alias cannot be renamed.
 - Frontend: Vite + TypeScript without a UI framework, hand written CSS, no CDN and no external requests. Light and dark themes follow the system setting.
 - UI copy is in English.
 - The `api` alias and the `assets/` prefix are reserved.

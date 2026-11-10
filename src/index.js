@@ -7,8 +7,9 @@ const HASH_PATTERN = /^[A-Za-z0-9_-]+$/;
  * @typedef {{ hash: string, shortUrl: string, destination: string }} ShortLink
  * @typedef {{ links: ShortLink[] }} LinksResponse
  * @typedef {ShortLink} CreateLinkResponse
- * @typedef {'hash_taken' | 'unauthorized' | 'invalid_destination' | 'invalid_hash'} CreateLinkErrorCode
- * @typedef {{ error: CreateLinkErrorCode }} CreateLinkError
+ * @typedef {ShortLink} UpdateLinkResponse
+ * @typedef {'hash_taken' | 'unauthorized' | 'invalid_destination' | 'invalid_hash' | 'not_found'} ApiErrorCode
+ * @typedef {{ error: ApiErrorCode }} ApiError
  */
 
 const isHttpUrl = (value) => {
@@ -21,7 +22,7 @@ const isHttpUrl = (value) => {
 
 export default {
 	async fetch(request, env, ctx) {
-		const setCache = (hash, data) => env.URLS.put(hash, data);
+		const setCache = (hash, data) => env.URLS.put(hash, data, { metadata: { destination: data } });
 		const getCache = (hash) => env.URLS.get(hash);
 		const deleteCache = (hash) => env.URLS.delete(hash);
 		const getAllCache = () => env.URLS.list();
@@ -35,9 +36,9 @@ export default {
 				},
 			});
 
-		/** @param {CreateLinkErrorCode} error */
+		/** @param {ApiErrorCode} error */
 		const errorWith = (error, status) => {
-			/** @type {CreateLinkError} */
+			/** @type {ApiError} */
 			const body = { error };
 
 			return Response.json(body, { status });
@@ -88,6 +89,31 @@ export default {
 			return Response.json(body, { status: 201 });
 		};
 
+		const handleUpdate = async ({ hash, headers, origin }) => {
+			if (!HASH_PATTERN.test(hash)) {
+				return errorWith('invalid_hash', 400);
+			}
+
+			const previousLocation = await getCache(hash);
+
+			if (!previousLocation) {
+				return errorWith('not_found', 404);
+			}
+
+			const destination = headers.get('x-destination');
+
+			if (!destination || !isHttpUrl(destination)) {
+				return errorWith('invalid_destination', 400);
+			}
+
+			await setCache(hash, destination);
+
+			/** @type {UpdateLinkResponse} */
+			const body = { hash, shortUrl: `${origin}/${hash}`, destination };
+
+			return Response.json(body);
+		};
+
 		const handleDelete = async ({ hash }) => {
 			await deleteCache(hash);
 
@@ -99,7 +125,11 @@ export default {
 
 			/** @type {ShortLink[]} */
 			const links = await Promise.all(
-				keys.map(async ({ name }) => ({ hash: name, shortUrl: `${origin}/${name}`, destination: (await getCache(name)) ?? '' }))
+				keys.map(async ({ name, metadata }) => ({
+					hash: name,
+					shortUrl: `${origin}/${name}`,
+					destination: metadata?.destination ?? (await getCache(name)) ?? '',
+				}))
 			);
 
 			/** @type {LinksResponse} */
@@ -141,7 +171,7 @@ export default {
 		}
 
 		if (['PUT', 'PATCH'].includes(method)) {
-			return checkAuth({ auth }, () => handleUpdate({ hash }));
+			return checkAuth({ auth }, () => handleUpdate({ hash, headers, origin }));
 		}
 
 		return responseWith({ status: 405 });

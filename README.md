@@ -25,7 +25,7 @@ A small URL shortener running on Cloudflare Workers. Links are stored in a KV na
 
 ### HTTP API
 
-`POST` and `DELETE` require the access code in the `Authorization` header.
+`POST`, `PUT`, `PATCH` and `DELETE` require the access code in the `Authorization` header.
 
 | Route              | Response                                                                                       |
 | ------------------ | ---------------------------------------------------------------------------------------------- |
@@ -34,15 +34,17 @@ A small URL shortener running on Cloudflare Workers. Links are stored in a KV na
 | `GET /api/links`   | `200 { "links": [{ "hash", "shortUrl", "destination" }] }`                                     |
 | `POST /{hash}`     | Creates a link to the URL in the `X-Destination` header. `201 { "hash", "shortUrl", "destination" }` |
 | `POST /`           | Same as above with a random hash.                                                              |
+| `PUT /{hash}`, `PATCH /{hash}` | Changes the destination to the URL in `X-Destination`. `200 { "hash", "shortUrl", "destination" }` |
 | `DELETE /{hash}`   | `204`.                                                                                         |
 
-Errors on `POST` are returned as `{ "error": code }`:
+Errors are returned as `{ "error": code }`:
 
 | Status | Code                  | Meaning                                                              |
 | ------ | --------------------- | -------------------------------------------------------------------- |
 | `400`  | `invalid_destination` | `X-Destination` is missing or is not an `http(s)` URL.               |
 | `400`  | `invalid_hash`        | The hash has characters other than letters, numbers, `-` and `_`.    |
 | `401`  | `unauthorized`        | The access code is missing or wrong.                                 |
+| `404`  | `not_found`           | The hash to update does not exist.                                   |
 | `409`  | `hash_taken`          | The hash already exists.                                             |
 
 The `api` hash and the `assets/` prefix are reserved.

@@ -1,6 +1,6 @@
 import './brand';
 import type {
-	CreateLinkError,
+	ApiError,
 	CreateLinkErrorCode,
 	CreateLinkRequest,
 	CreateLinkResponse,
@@ -8,7 +8,10 @@ import type {
 	FieldError,
 	FieldName,
 	LinksResponse,
+	ManageLinkFailure,
+	ManageLinkResult,
 	ShortLink,
+	UpdateLinkResponse,
 } from './types';
 
 const COPY = {
@@ -16,6 +19,15 @@ const COPY = {
 	submitting: 'Shortening…',
 	copy: 'Copy',
 	copied: 'Copied!',
+	edit: 'Edit',
+	save: 'Save',
+	saving: 'Saving…',
+	cancel: 'Cancel',
+	delete: 'Delete',
+	deleting: 'Deleting…',
+	confirmDelete: 'Delete this link?',
+	accessCodeRequired: 'Enter your access code to edit or delete links.',
+	linkGone: 'That link no longer exists.',
 	linksLoading: 'Loading links…',
 	linksEmpty: 'No links yet. Create your first one.',
 	linksError: 'Could not load your links. Reload the page to try again.',
@@ -57,6 +69,8 @@ const $resultDestination = getElement<HTMLParagraphElement>('#result-destination
 const $copy = getElement<HTMLButtonElement>('#copy');
 const $links = getElement<HTMLUListElement>('#links');
 const $linksStatus = getElement<HTMLParagraphElement>('#links-status');
+const $linksNotice = getElement<HTMLParagraphElement>('#links-notice');
+const $linksTitle = getElement<HTMLHeadingElement>('#links-title');
 
 const fields: Record<FieldName, { input: HTMLInputElement; error: HTMLParagraphElement }> = {
 	destination: { input: getElement('#link'), error: getElement('#link-error') },
@@ -152,8 +166,8 @@ const requestLink = async ({ destination, hash, accessCode }: CreateLinkRequest)
 			return { ok: true, link };
 		}
 
-		const { error }: CreateLinkError = await response.json();
-		const fieldError = SERVER_ERRORS[error];
+		const { error }: ApiError = await response.json();
+		const fieldError = error === 'not_found' ? undefined : SERVER_ERRORS[error];
 
 		return fieldError ? { ok: false, fieldError } : { ok: false, formError: COPY.unknown };
 	} catch {
@@ -268,13 +282,100 @@ const createArrow = (): SVGSVGElement => {
 	return $arrow;
 };
 
+const createButton = (label: string, modifier = 'button-plate'): HTMLButtonElement => {
+	const $button = document.createElement('button');
+
+	$button.className = `button ${modifier}`;
+	$button.type = 'button';
+	$button.textContent = label;
+
+	return $button;
+};
+
+const MANAGE_FAILURES: Record<number, ManageLinkFailure> = {
+	400: 'invalid_destination',
+	401: 'unauthorized',
+	404: 'not_found',
+};
+
+const manageLink = async <T>(hash: string, init: RequestInit, read: (response: Response) => Promise<T>): Promise<ManageLinkResult<T>> => {
+	let response: Response;
+
+	try {
+		response = await fetch(`/${encodeURIComponent(hash)}`, init);
+	} catch {
+		return { ok: false, reason: 'network' };
+	}
+
+	if (!response.ok) {
+		return { ok: false, reason: MANAGE_FAILURES[response.status] ?? 'unknown' };
+	}
+
+	try {
+		return { ok: true, value: await read(response) };
+	} catch {
+		return { ok: false, reason: 'unknown' };
+	}
+};
+
+const updateLink = (hash: string, destination: string, accessCode: string): Promise<ManageLinkResult<UpdateLinkResponse>> =>
+	manageLink(hash, { method: 'PATCH', headers: { Authorization: accessCode, 'X-Destination': destination } }, (response) => response.json());
+
+const deleteLink = (hash: string, accessCode: string): Promise<ManageLinkResult<null>> =>
+	manageLink(hash, { method: 'DELETE', headers: { Authorization: accessCode } }, async () => null);
+
+const readAccessCode = (): string | null => {
+	const accessCode = fields.accessCode.input.value;
+
+	if (accessCode === '') {
+		showFieldErrors([{ field: 'accessCode', message: COPY.accessCodeRequired }]);
+		return null;
+	}
+
+	clearFieldError('accessCode');
+
+	return accessCode;
+};
+
+const ROW_FAILURE_COPY: Record<Exclude<ManageLinkFailure, 'unauthorized' | 'not_found'>, string> = {
+	invalid_destination: COPY.invalidDestination,
+	network: COPY.network,
+	unknown: COPY.unknown,
+};
+
+const showLinksNotice = (message: string): void => {
+	$linksNotice.textContent = message;
+	$linksNotice.hidden = false;
+};
+
+const clearLinksNotice = (): void => {
+	$linksNotice.hidden = true;
+	$linksNotice.textContent = '';
+};
+
+const focusRowAction = (hash: string, action: string): void => {
+	const $row = [...$links.children].find(($child) => $child instanceof HTMLElement && $child.dataset.hash === hash);
+
+	$row?.querySelector<HTMLButtonElement>(`[data-action="${action}"]`)?.focus();
+};
+
 const createLinkRow = ({ hash, shortUrl, destination }: ShortLink): HTMLLIElement => {
 	const $row = document.createElement('li');
 	const $shield = document.createElement('a');
 	const $destination = document.createElement('span');
-	const $button = document.createElement('button');
+	const $editor = document.createElement('input');
+	const $confirm = document.createElement('span');
+	const $actions = document.createElement('div');
+	const $error = document.createElement('p');
+	const $copyButton = createButton(COPY.copy);
+	const $editButton = createButton(COPY.edit);
+	const $deleteButton = createButton(COPY.delete);
+	const $saveButton = createButton(COPY.save, 'button-plate button-solid');
+	const $confirmButton = createButton(COPY.delete, 'button-plate button-danger');
+	const $cancelButton = createButton(COPY.cancel);
 
 	$row.className = 'link-row';
+	$row.dataset.hash = hash;
 
 	$shield.className = 'shield';
 	$shield.href = shortUrl;
@@ -287,13 +388,157 @@ const createLinkRow = ({ hash, shortUrl, destination }: ShortLink): HTMLLIElemen
 	$destination.textContent = withoutScheme(destination);
 	$destination.title = destination;
 
-	$button.className = 'button button-plate';
-	$button.type = 'button';
-	$button.textContent = COPY.copy;
-	$button.setAttribute('aria-live', 'polite');
-	$button.addEventListener('click', () => void copyLink($button, $shield));
+	$editor.className = 'input link-editor';
+	$editor.type = 'url';
+	$editor.inputMode = 'url';
+	$editor.autocomplete = 'off';
+	$editor.setAttribute('aria-label', `Destination URL for ${hash}`);
 
-	$row.append($shield, createArrow(), $destination, $button);
+	$confirm.className = 'link-confirm';
+	$confirm.textContent = COPY.confirmDelete;
+
+	$actions.className = 'link-actions';
+
+	$error.className = 'row-error';
+	$error.setAttribute('role', 'alert');
+	$error.hidden = true;
+
+	$copyButton.setAttribute('aria-live', 'polite');
+	$editButton.dataset.action = 'edit';
+	$editButton.setAttribute('aria-label', `${COPY.edit} ${hash}`);
+	$deleteButton.dataset.action = 'delete';
+	$deleteButton.setAttribute('aria-label', `${COPY.delete} ${hash}`);
+
+	const showError = (message: string): void => {
+		$error.textContent = message;
+		$error.hidden = false;
+	};
+
+	const setMode = (mode: 'view' | 'edit' | 'delete'): void => {
+		$row.dataset.mode = mode;
+		$error.hidden = true;
+		$destination.hidden = mode !== 'view';
+		$editor.hidden = mode !== 'edit';
+		$confirm.hidden = mode !== 'delete';
+
+		const buttons = {
+			view: [$copyButton, $editButton, $deleteButton],
+			edit: [$saveButton, $cancelButton],
+			delete: [$confirmButton, $cancelButton],
+		};
+
+		$actions.replaceChildren(...buttons[mode]);
+	};
+
+	const setBusy = ($button: HTMLButtonElement, label: string, isBusy: boolean): void => {
+		$button.disabled = isBusy;
+		$cancelButton.disabled = isBusy;
+		$button.textContent = label;
+	};
+
+	const handleFailure = (reason: ManageLinkFailure): void => {
+		if (reason === 'unauthorized') {
+			showFieldErrors([{ field: 'accessCode', message: COPY.unauthorized }]);
+			return;
+		}
+
+		if (reason === 'not_found') {
+			removeLink(hash);
+			showLinksNotice(COPY.linkGone);
+			$linksTitle.focus();
+			return;
+		}
+
+		showError(ROW_FAILURE_COPY[reason]);
+	};
+
+	const save = async (): Promise<void> => {
+		const nextDestination = $editor.value.trim();
+
+		if (!isHttpUrl(nextDestination)) {
+			showError(COPY.invalidDestination);
+			$editor.focus();
+			return;
+		}
+
+		const accessCode = readAccessCode();
+
+		if (accessCode === null) {
+			return;
+		}
+
+		setBusy($saveButton, COPY.saving, true);
+		const result = await updateLink(hash, nextDestination, accessCode);
+		setBusy($saveButton, COPY.save, false);
+
+		if (!result.ok) {
+			handleFailure(result.reason);
+			return;
+		}
+
+		replaceLink(result.value);
+		focusRowAction(hash, 'edit');
+	};
+
+	const confirmDelete = async (): Promise<void> => {
+		const accessCode = readAccessCode();
+
+		if (accessCode === null) {
+			return;
+		}
+
+		setBusy($confirmButton, COPY.deleting, true);
+		const result = await deleteLink(hash, accessCode);
+		setBusy($confirmButton, COPY.delete, false);
+
+		if (!result.ok) {
+			handleFailure(result.reason);
+			return;
+		}
+
+		removeLink(hash);
+		$linksTitle.focus();
+	};
+
+	$copyButton.addEventListener('click', () => void copyLink($copyButton, $shield));
+
+	$editButton.addEventListener('click', () => {
+		clearLinksNotice();
+		$editor.value = destination;
+		setMode('edit');
+		$editor.focus();
+		$editor.select();
+	});
+
+	$deleteButton.addEventListener('click', () => {
+		clearLinksNotice();
+		setMode('delete');
+		$confirmButton.focus();
+	});
+
+	$cancelButton.addEventListener('click', () => {
+		const action = $row.dataset.mode === 'edit' ? $editButton : $deleteButton;
+
+		setMode('view');
+		action.focus();
+	});
+
+	$saveButton.addEventListener('click', () => void save());
+	$confirmButton.addEventListener('click', () => void confirmDelete());
+
+	$editor.addEventListener('keydown', (event) => {
+		if (event.key === 'Enter') {
+			event.preventDefault();
+			void save();
+		}
+
+		if (event.key === 'Escape') {
+			$cancelButton.click();
+		}
+	});
+
+	$row.append($shield, createArrow(), $destination, $editor, $confirm, $actions, $error);
+	setMode('view');
 
 	return $row;
 };
@@ -318,7 +563,18 @@ const renderLinks = (): void => {
 };
 
 const addLink = (link: ShortLink): void => {
+	clearLinksNotice();
 	links = [link, ...links.filter(({ hash }) => hash !== link.hash)];
+	renderLinks();
+};
+
+const replaceLink = (link: ShortLink): void => {
+	links = links.map((current) => (current.hash === link.hash ? link : current));
+	renderLinks();
+};
+
+const removeLink = (hash: string): void => {
+	links = links.filter((link) => link.hash !== hash);
 	renderLinks();
 };
 

@@ -15,7 +15,7 @@ Every short link is a road sign: a route marker that points at its destination. 
 | `--color-shield` | `#f2b705` | Route shields: an alias, and nothing else. Also the text selection. |
 | `--color-plate` | `#ffffff` (day), `#f4f2ec` (night) | Regulatory plates: where something is typed or stated. |
 | `--color-plate-ink` | `#1b1b1b` | Text and borders on plates and shields. |
-| `--color-error`, `--color-plate-error` | `#a81f17` (day), `#ffa197` on the night ground | Errors only. |
+| `--color-error`, `--color-plate-error`, `--color-danger` | `#a81f17` (day), `#ffa197` on the night ground | Errors and the confirmation of a deletion. Nothing else. |
 | `--color-ground` | `#e9e7e1` (day), `#181b1a` (night) | The page: pale concrete by day, asphalt by night. |
 | `--color-ink`, `--color-ink-muted` | themed | Headings, labels and hints set directly on the ground. |
 
@@ -42,7 +42,7 @@ The wordmark is the host the page is served from, written by `web/brand.ts`. The
 - **Shield** (`.shield`): yellow, 3px black border, bold alias. It is the link to the short URL.
 - **Arrow** (`#arrow` symbol): one drawn arrow, square ends, used pointing right in rows and results and rotated up-right in the masthead. No Unicode arrows.
 - **Primary button**: solid sign green, white bold text, full width in the form.
-- **Link row**: shield, arrow, destination, Copy. Columns align across rows through subgrid; under 34rem the destination drops to a second line.
+- **Link row**: two lines. First the shield with Copy, Edit and Delete on the right; then the arrow and the destination. Edit swaps the destination for an input and the actions for Save and Cancel; Delete swaps them for a red question and a red Delete. Under 34rem the actions move to a third line.
 
 No shadows, no gradients, no cards inside cards.
 

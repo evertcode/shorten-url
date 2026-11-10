@@ -40,6 +40,21 @@ describe('URL shortener worker', () => {
 			});
 		});
 
+		it('reads the destination of links created through the API from the key metadata', async () => {
+			await SELF.fetch(`${ORIGIN}/docs`, {
+				method: 'POST',
+				headers: { Authorization: ACCESS_CODE, 'X-Destination': 'https://example.org/docs' },
+			});
+
+			const { keys } = await env.URLS.list();
+			const response = await SELF.fetch(`${ORIGIN}/api/links`);
+
+			expect(keys[0].metadata).toEqual({ destination: 'https://example.org/docs' });
+			expect(await response.json()).toEqual({
+				links: [{ hash: 'docs', shortUrl: `${ORIGIN}/docs`, destination: 'https://example.org/docs' }],
+			});
+		});
+
 		it('returns an empty list when there are no links', async () => {
 			const response = await SELF.fetch(`${ORIGIN}/api/links`);
 
@@ -160,6 +175,49 @@ describe('URL shortener worker', () => {
 		});
 	});
 
+	describe('PUT/PATCH /{hash}', () => {
+		const update = (method, path, headers) => SELF.fetch(`${ORIGIN}${path}`, { method, headers });
+		const validHeaders = { Authorization: ACCESS_CODE, 'X-Destination': 'https://example.org/new' };
+
+		it.each(['PUT', 'PATCH'])('updates the destination of an existing hash with %s', async (method) => {
+			await env.URLS.put('docs', 'https://example.org/old');
+
+			const response = await update(method, '/docs', validHeaders);
+
+			expect(response.status).toBe(200);
+			expect(await response.json()).toEqual({ hash: 'docs', shortUrl: `${ORIGIN}/docs`, destination: 'https://example.org/new' });
+			expect(await env.URLS.get('docs')).toBe('https://example.org/new');
+		});
+
+		it('returns 404 with not_found when the hash does not exist', async () => {
+			const response = await update('PATCH', '/missing', validHeaders);
+
+			expect(response.status).toBe(404);
+			expect(await response.json()).toEqual({ error: 'not_found' });
+			expect(await env.URLS.get('missing')).toBeNull();
+		});
+
+		it('returns 400 with invalid_destination for a non http(s) destination', async () => {
+			await env.URLS.put('docs', 'https://example.org/old');
+
+			const response = await update('PATCH', '/docs', { ...validHeaders, 'X-Destination': 'not a url' });
+
+			expect(response.status).toBe(400);
+			expect(await response.json()).toEqual({ error: 'invalid_destination' });
+			expect(await env.URLS.get('docs')).toBe('https://example.org/old');
+		});
+
+		it('returns 401 with unauthorized without a valid access code', async () => {
+			await env.URLS.put('docs', 'https://example.org/old');
+
+			const response = await update('PATCH', '/docs', { ...validHeaders, Authorization: 'wrong-code' });
+
+			expect(response.status).toBe(401);
+			expect(await response.json()).toEqual({ error: 'unauthorized' });
+			expect(await env.URLS.get('docs')).toBe('https://example.org/old');
+		});
+	});
+
 	describe('DELETE /{hash}', () => {
 		it('returns 204 and removes the link with a valid access code', async () => {
 			await env.URLS.put('docs', 'https://example.org/docs');
@@ -171,6 +229,16 @@ describe('URL shortener worker', () => {
 
 			expect(response.status).toBe(204);
 			expect(await env.URLS.get('docs')).toBeNull();
+		});
+
+		it('returns 401 with unauthorized without a valid access code', async () => {
+			await env.URLS.put('docs', 'https://example.org/docs');
+
+			const response = await SELF.fetch(`${ORIGIN}/docs`, { method: 'DELETE', headers: { Authorization: 'wrong-code' } });
+
+			expect(response.status).toBe(401);
+			expect(await response.json()).toEqual({ error: 'unauthorized' });
+			expect(await env.URLS.get('docs')).toBe('https://example.org/docs');
 		});
 	});
 });

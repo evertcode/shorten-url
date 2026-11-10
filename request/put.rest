@@ -1,0 +1,14 @@
+### DEV - update existing hash
+PUT http://localhost:58749/demo
+Authorization: evertcodesecret
+X-Destination: https://google.com/maps
+
+### DEV - update nonexistent hash (expect 404)
+PUT http://localhost:58749/does-not-exist
+Authorization: evertcodesecret
+X-Destination: https://example.com
+
+### PROD
+PATCH https://short-url.hebert-hernandez7.workers.dev/12345
+Authorization: evertcodesecret
+X-Destination: https://example.com/new-destination
