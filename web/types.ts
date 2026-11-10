@@ -1,5 +1,7 @@
 export type ShortLink = {
 	hash: string;
+	shortUrl: string;
+	destination: string;
 };
 
 export type LinksResponse = {
@@ -12,11 +14,7 @@ export type CreateLinkRequest = {
 	accessCode: string;
 };
 
-export type CreateLinkResponse = {
-	hash: string;
-	shortUrl: string;
-	destination: string;
-};
+export type CreateLinkResponse = ShortLink;
 
 export type CreateLinkErrorCode = 'hash_taken' | 'unauthorized' | 'invalid_destination' | 'invalid_hash';
 

@@ -1,3 +1,4 @@
+import './brand';
 import type {
 	CreateLinkError,
 	CreateLinkErrorCode,
@@ -15,6 +16,9 @@ const COPY = {
 	submitting: 'Shortening…',
 	copy: 'Copy',
 	copied: 'Copied!',
+	linksLoading: 'Loading links…',
+	linksEmpty: 'No links yet. Create your first one.',
+	linksError: 'Could not load your links. Reload the page to try again.',
 	invalidDestination: 'Enter a valid URL, including https://',
 	invalidHash: 'Aliases can only contain letters, numbers, hyphens and underscores.',
 	hashTaken: 'That alias is already taken. Try another one.',
@@ -51,7 +55,8 @@ const $resultCard = getElement<HTMLElement>('#result-card');
 const $resultLink = getElement<HTMLAnchorElement>('#result-link');
 const $resultDestination = getElement<HTMLParagraphElement>('#result-destination');
 const $copy = getElement<HTMLButtonElement>('#copy');
-const $links = getElement<HTMLDivElement>('#links');
+const $links = getElement<HTMLUListElement>('#links');
+const $linksStatus = getElement<HTMLParagraphElement>('#links-status');
 
 const fields: Record<FieldName, { input: HTMLInputElement; error: HTMLParagraphElement }> = {
 	destination: { input: getElement('#link'), error: getElement('#link-error') },
@@ -156,10 +161,15 @@ const requestLink = async ({ destination, hash, accessCode }: CreateLinkRequest)
 	}
 };
 
+const withoutScheme = (url: string): string => url.replace(/^https?:\/\//, '');
+
 const showResult = ({ shortUrl, destination }: CreateLinkResponse): void => {
 	$resultLink.href = shortUrl;
-	$resultLink.textContent = shortUrl.replace(/^https?:\/\//, '');
-	$resultDestination.textContent = destination;
+	const [host, ...path] = withoutScheme(shortUrl).split('/');
+
+	$resultLink.replaceChildren(`${host}/`, document.createElement('wbr'), path.join('/'));
+	$resultDestination.textContent = withoutScheme(destination);
+	$resultDestination.title = destination;
 	$copy.textContent = COPY.copy;
 	$resultCard.hidden = false;
 	$resultLink.focus();
@@ -191,6 +201,7 @@ const submit = async (): Promise<void> => {
 		fields.destination.input.value = '';
 		fields.hash.input.value = '';
 		showResult(result.link);
+		addLink(result.link);
 		return;
 	}
 
@@ -203,29 +214,32 @@ const submit = async (): Promise<void> => {
 	$create.focus();
 };
 
-const selectResultLink = (): void => {
+const selectContents = (element: HTMLElement): void => {
 	const range = document.createRange();
 
-	range.selectNodeContents($resultLink);
+	range.selectNodeContents(element);
 	getSelection()?.removeAllRanges();
 	getSelection()?.addRange(range);
 };
 
-let copiedTimeout: number | undefined;
+const copiedTimeouts = new WeakMap<HTMLButtonElement, number>();
 
-const copyResult = async (): Promise<void> => {
+const copyLink = async ($button: HTMLButtonElement, $anchor: HTMLAnchorElement): Promise<void> => {
 	try {
-		await navigator.clipboard.writeText($resultLink.href);
+		await navigator.clipboard.writeText($anchor.href);
 	} catch {
-		selectResultLink();
+		selectContents($anchor);
 		return;
 	}
 
-	$copy.textContent = COPY.copied;
-	window.clearTimeout(copiedTimeout);
-	copiedTimeout = window.setTimeout(() => {
-		$copy.textContent = COPY.copy;
-	}, COPIED_FEEDBACK_MS);
+	$button.textContent = COPY.copied;
+	window.clearTimeout(copiedTimeouts.get($button));
+	copiedTimeouts.set(
+		$button,
+		window.setTimeout(() => {
+			$button.textContent = COPY.copy;
+		}, COPIED_FEEDBACK_MS)
+	);
 };
 
 const fetchLinks = async (): Promise<ShortLink[]> => {
@@ -240,20 +254,85 @@ const fetchLinks = async (): Promise<ShortLink[]> => {
 	return links;
 };
 
-const renderLinks = (links: ShortLink[]): void => {
-	const rows = links.map(({ hash }) => {
-		const row = document.createElement('div');
-		const anchor = document.createElement('a');
+const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
 
-		row.className = 'link-row';
-		anchor.href = `/${encodeURIComponent(hash)}`;
-		anchor.textContent = hash;
-		row.append(anchor);
+const createArrow = (): SVGSVGElement => {
+	const $arrow = document.createElementNS(SVG_NAMESPACE, 'svg');
+	const $use = document.createElementNS(SVG_NAMESPACE, 'use');
 
-		return row;
-	});
+	$arrow.setAttribute('class', 'arrow');
+	$arrow.setAttribute('aria-hidden', 'true');
+	$use.setAttribute('href', '#arrow');
+	$arrow.append($use);
 
-	$links.replaceChildren(...rows);
+	return $arrow;
+};
+
+const createLinkRow = ({ hash, shortUrl, destination }: ShortLink): HTMLLIElement => {
+	const $row = document.createElement('li');
+	const $shield = document.createElement('a');
+	const $destination = document.createElement('span');
+	const $button = document.createElement('button');
+
+	$row.className = 'link-row';
+
+	$shield.className = 'shield';
+	$shield.href = shortUrl;
+	$shield.target = '_blank';
+	$shield.rel = 'noopener';
+	$shield.title = withoutScheme(shortUrl);
+	$shield.textContent = hash;
+
+	$destination.className = 'link-destination';
+	$destination.textContent = withoutScheme(destination);
+	$destination.title = destination;
+
+	$button.className = 'button button-plate';
+	$button.type = 'button';
+	$button.textContent = COPY.copy;
+	$button.setAttribute('aria-live', 'polite');
+	$button.addEventListener('click', () => void copyLink($button, $shield));
+
+	$row.append($shield, createArrow(), $destination, $button);
+
+	return $row;
+};
+
+const showLinksStatus = (message: string): void => {
+	$linksStatus.textContent = message;
+	$linksStatus.hidden = false;
+	$links.hidden = true;
+};
+
+let links: ShortLink[] = [];
+
+const renderLinks = (): void => {
+	if (links.length === 0) {
+		showLinksStatus(COPY.linksEmpty);
+		return;
+	}
+
+	$links.replaceChildren(...links.map(createLinkRow));
+	$links.hidden = false;
+	$linksStatus.hidden = true;
+};
+
+const addLink = (link: ShortLink): void => {
+	links = [link, ...links.filter(({ hash }) => hash !== link.hash)];
+	renderLinks();
+};
+
+const loadLinks = async (): Promise<void> => {
+	showLinksStatus(COPY.linksLoading);
+
+	try {
+		links = await fetchLinks();
+	} catch {
+		showLinksStatus(COPY.linksError);
+		return;
+	}
+
+	renderLinks();
 };
 
 $hashPrefix.textContent = `${location.host}/`;
@@ -270,6 +349,6 @@ fieldNames.forEach((field) => {
 	fields[field].input.addEventListener('input', () => clearFieldError(field));
 });
 
-$copy.addEventListener('click', () => void copyResult());
+$copy.addEventListener('click', () => void copyLink($copy, $resultLink));
 
-fetchLinks().then(renderLinks).catch(console.error);
+void loadLinks();

@@ -1,11 +1,12 @@
 const API_PREFIX = 'api';
 const ASSETS_PREFIX = 'assets';
+const NOT_FOUND_PAGE = '404';
 const HASH_PATTERN = /^[A-Za-z0-9_-]+$/;
 
 /**
- * @typedef {{ hash: string }} ShortLink
+ * @typedef {{ hash: string, shortUrl: string, destination: string }} ShortLink
  * @typedef {{ links: ShortLink[] }} LinksResponse
- * @typedef {{ hash: string, shortUrl: string, destination: string }} CreateLinkResponse
+ * @typedef {ShortLink} CreateLinkResponse
  * @typedef {'hash_taken' | 'unauthorized' | 'invalid_destination' | 'invalid_hash'} CreateLinkErrorCode
  * @typedef {{ error: CreateLinkErrorCode }} CreateLinkError
  */
@@ -42,12 +43,22 @@ export default {
 			return Response.json(body, { status });
 		};
 
-		const handleGet = async ({ hash }) => {
+		const notFound = async ({ origin }) => {
+			const page = await env.ASSETS.fetch(new Request(`${origin}/${NOT_FOUND_PAGE}`));
+
+			return new Response(page.body, { status: 404, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+		};
+
+		const handleGet = async ({ hash, origin }) => {
 			const location = await getCache(hash);
+
+			if (!location) {
+				return notFound({ origin });
+			}
 
 			const validUrlLocation = location.startsWith('http') ? location : `https://${location}`;
 
-			return location ? responseWith({ status: 302, location: `${validUrlLocation}` }) : responseWith({ status: 404 });
+			return responseWith({ status: 302, location: validUrlLocation });
 		};
 
 		const handlePost = async ({ hash, headers, origin }) => {
@@ -83,17 +94,22 @@ export default {
 			return responseWith({ status: 204 });
 		};
 
-		const handleListLinks = async () => {
+		const handleListLinks = async ({ origin }) => {
 			const { keys } = await getAllCache();
 
+			/** @type {ShortLink[]} */
+			const links = await Promise.all(
+				keys.map(async ({ name }) => ({ hash: name, shortUrl: `${origin}/${name}`, destination: (await getCache(name)) ?? '' }))
+			);
+
 			/** @type {LinksResponse} */
-			const body = { links: keys.map(({ name }) => ({ hash: name })) };
+			const body = { links };
 
 			return Response.json(body);
 		};
 
-		const handleApi = ({ hash, method }) =>
-			hash === `${API_PREFIX}/links` && method === 'GET' ? handleListLinks() : responseWith({ status: 404 });
+		const handleApi = ({ hash, method, origin }) =>
+			hash === `${API_PREFIX}/links` && method === 'GET' ? handleListLinks({ origin }) : responseWith({ status: 404 });
 
 		const checkAuth = ({ auth }, callback) => (auth === env.AUTH_SECRET ? callback() : errorWith('unauthorized', 401));
 
@@ -103,7 +119,7 @@ export default {
 		const auth = headers.get('Authorization');
 
 		if (hash === API_PREFIX || hash.startsWith(`${API_PREFIX}/`)) {
-			return handleApi({ hash, method });
+			return handleApi({ hash, method, origin });
 		}
 
 		const isAssetRequest = hash === '' || hash.startsWith(`${ASSETS_PREFIX}/`);
@@ -113,7 +129,7 @@ export default {
 		}
 
 		if (method === 'GET') {
-			return handleGet({ hash });
+			return handleGet({ hash, origin });
 		}
 
 		if (method === 'POST') {

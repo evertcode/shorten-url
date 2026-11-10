@@ -19,12 +19,12 @@ describe('URL shortener worker', () => {
 
 			expect(response.status).toBe(200);
 			expect(response.headers.get('Content-Type')).toContain('text/html');
-			expect(await response.text()).toContain('<h1>URL Shortener</h1>');
+			expect(await response.text()).toContain('id="create-form"');
 		});
 	});
 
 	describe('GET /api/links', () => {
-		it('returns the stored hashes', async () => {
+		it('includes hash, shortUrl and destination for each link', async () => {
 			await env.URLS.put('docs', 'https://example.org/docs');
 			await env.URLS.put('blog', 'https://example.org/blog');
 
@@ -32,7 +32,12 @@ describe('URL shortener worker', () => {
 
 			expect(response.status).toBe(200);
 			expect(response.headers.get('Content-Type')).toContain('application/json');
-			expect(await response.json()).toEqual({ links: [{ hash: 'blog' }, { hash: 'docs' }] });
+			expect(await response.json()).toEqual({
+				links: [
+					{ hash: 'blog', shortUrl: `${ORIGIN}/blog`, destination: 'https://example.org/blog' },
+					{ hash: 'docs', shortUrl: `${ORIGIN}/docs`, destination: 'https://example.org/docs' },
+				],
+			});
 		});
 
 		it('returns an empty list when there are no links', async () => {
@@ -51,6 +56,23 @@ describe('URL shortener worker', () => {
 
 			expect(response.status).toBe(302);
 			expect(response.headers.get('Location')).toBe('https://example.org/docs');
+		});
+
+		it('redirects to the https version of a destination stored without a scheme', async () => {
+			await env.URLS.put('docs', 'example.org/docs');
+
+			const response = await SELF.fetch(`${ORIGIN}/docs`, { redirect: 'manual' });
+
+			expect(response.status).toBe(302);
+			expect(response.headers.get('Location')).toBe('https://example.org/docs');
+		});
+
+		it('returns 404 with an HTML page for an unknown hash', async () => {
+			const response = await SELF.fetch(`${ORIGIN}/missing`);
+
+			expect(response.status).toBe(404);
+			expect(response.headers.get('Content-Type')).toContain('text/html');
+			expect(await response.text()).toContain('<h1>Link not found</h1>');
 		});
 	});
 

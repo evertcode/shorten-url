@@ -17,8 +17,8 @@ implemented_by:
     version: "5.2"
     reasoning_effort: "unspecified"
 
-last_implementation_at: "2026-11-10T21:22:03Z"
-has_completed_all_phases: "false"
+last_implementation_at: "2026-11-10T21:58:40Z"
+has_completed_all_phases: "true"
 ---
 
 # Modernize the UI and UX of the URL shortener
@@ -202,20 +202,27 @@ Public contracts:
 
 To-do:
 
-- [ ] Fix `handleGet` in `src/index.js` so the `null` check happens before `startsWith`.
-- [ ] Create `web/404.html` reusing `web/styles.css`, add it as a Vite entry and make the Worker return it from the assets binding with status 404 for unknown hashes.
-- [ ] Extend `GET /api/links` to return `shortUrl` and `destination`. Extend the `ShortLink` type accordingly.
-- [ ] Redesign the list in `web/index.html` and `web/main.ts`: each row shows the short link, the truncated destination and a copy button.
-- [ ] Add the loading, empty and error states of the list.
-- [ ] Refresh the list after a link is created, placing the new link first.
-- [ ] Add the test cases listed above to `test/index.spec.js`.
-- [ ] Update `README.md` with a short description, the `dev`, `verify` and `deploy` commands and the HTTP API.
-- [ ] Check the list states and the 404 page in the browser in both themes and at mobile width.
-- [ ] Verify the changes in terms of typechecking, linting and tests using the project's verification command (`npm run verify`). Fix issues if any.
-- [ ] STOP. Present the changes to the user for review and suggest commit messages (or pull request titles, when the phases are implemented through pull requests). Do NOT proceed to the next phase until the user explicitly asks.
+- [x] Fix `handleGet` in `src/index.js` so the `null` check happens before `startsWith`.
+- [x] Create `web/404.html` reusing `web/styles.css`, add it as a Vite entry and make the Worker return it from the assets binding with status 404 for unknown hashes.
+- [x] Extend `GET /api/links` to return `shortUrl` and `destination`. Extend the `ShortLink` type accordingly.
+- [x] Redesign the list in `web/index.html` and `web/main.ts`: each row shows the short link, the truncated destination and a copy button.
+- [x] Add the loading, empty and error states of the list.
+- [x] Refresh the list after a link is created, placing the new link first.
+- [x] Add the test cases listed above to `test/index.spec.js`.
+- [x] Update `README.md` with a short description, the `dev`, `verify` and `deploy` commands and the HTTP API.
+- [x] Check the list states and the 404 page in the browser in both themes and at mobile width.
+- [x] Verify the changes in terms of typechecking, linting and tests using the project's verification command (`npm run verify`). Fix issues if any.
+- [x] STOP. Present the changes to the user for review and suggest commit messages (or pull request titles, when the phases are implemented through pull requests). Do NOT proceed to the next phase until the user explicitly asks.
+
+Implementation notes:
+
+- A created link is prepended to the list in memory instead of refetching `GET /api/links`, so it appears first without depending on KV list consistency.
+- `GET /api/links` reads every destination with one KV `get` per key. Fine for a small set of links; pagination stays out of scope.
+- Any unknown `GET` path, `/favicon.ico` included, now answers with the 404 page.
+- The list error state ("Could not load your links...") was not exercised in the browser, only the loading, empty and populated states.
 
 ## ⏭️ Next step
 
-Implement Phase 3: redesign the links list with destinations, copy buttons and its loading, empty and error states, and add the styled 404 page.
+All phases are complete: review and commit Phase 3, then open the pull request for the `feature/modernize-ui-ux` branch.
 
-New pipeline laid, fresh paint on the shell and a link to hand over. 🧱 🎨 🐢 💨 (Turbotuga™, [Codely](https://codely.com)'s mascot).
+New pipeline laid, fresh paint on the shell, a link to hand over and a signpost for the lost ones. 🧱 🎨 🪧 🐢 💨 (Turbotuga™, [Codely](https://codely.com)'s mascot).
